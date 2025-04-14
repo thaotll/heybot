@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yobot-app
+  name: heybot-app
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: yobot
+      app: heybot
   template:
     metadata:
       labels:
-        app: yobot
+        app: heybot
     spec:
       containers:
-        - name: yobot
-          image: ghcr.io/aiboosts/yobot-with-trivy-output:latest
+        - name: heybot
+          image: ghcr.io/aiboosts/heybot-with-trivy-output:latest
           command: ["/bin/bash", "-c", "while true; do sleep 3600; done"]
       imagePullSecrets:
         - name: ghcr-secret  # Das ImagePullSecret, das du vorher erstellt hast

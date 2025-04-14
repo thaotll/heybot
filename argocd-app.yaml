@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: yobot
+  name: heybot
   namespace: argocd
 spec:
   destination:
     namespace: default
     server: https://kubernetes.default.svc
   source:
-    repoURL: 'https://github.com/aiboosts/YoBot'
+    repoURL: 'https://github.com/aiboosts/heybot'
     targetRevision: HEAD
     path: 'k8s'
   project: default
