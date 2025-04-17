@@ -116,7 +116,7 @@ async def generate_security_report(vulnerabilities, humor_template):
         logging.error(f"Error generating report: {e}")
         return "This vulnerability analysis failed harder than Penny's cooking! Bazinga! 🔥"
 
-def load_trivy_logs(log_path="trivy_output.json"):
+def load_trivy_logs(log_path="/Users/thaostein/heybot/trivy_output.json"):
     try:
         with open(log_path, "r") as file:
             raw_data = json.load(file)

@@ -28,7 +28,7 @@ if not DEEPSEEK_API_KEY:
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 # Load Trivy logs from file
-def load_trivy_logs(log_path="trivy_output.json"):
+def load_trivy_logs(log_path="/Users/thaostein/heybot/trivy_output.json"):
     try:
         with open(log_path, "r") as file:
             raw_data = json.load(file)
