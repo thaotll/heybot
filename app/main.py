@@ -24,7 +24,7 @@ if not MODEL_HUMOR_PATH:
 if not DEEPSEEK_API_KEY:
     raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
 
-# Initialize DeepSeek client
+# Initialize DeepSeek client.
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 # Load Trivy logs from file
