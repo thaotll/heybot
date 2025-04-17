@@ -1,4 +1,4 @@
-# Use an official Python image
+# Use an official Python image.
 FROM python:3.11-slim
 
 # Set work directory
