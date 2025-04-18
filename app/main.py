@@ -9,7 +9,7 @@ from openai import OpenAI
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Configure logging .
 logging.basicConfig(level=logging.DEBUG)
 
 # Variables from the .env file
