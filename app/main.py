@@ -28,9 +28,9 @@ if not DEEPSEEK_API_KEY:
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 # Load Trivy logs from file
-def load_trivy_logs(log_path="/Users/thaostein/heybot/trivy_output.json"):
+def load_trivy_logs(log_path="trivy_output.json"):
     try:
-        with open(log_path, "r") as file:
+        with open(log_path, "r", encoding="utf-8") as file:
             raw_data = json.load(file)
             logging.debug(f"Raw Trivy log content: {json.dumps(raw_data, indent=2)}")
 
@@ -57,7 +57,7 @@ def load_trivy_logs(log_path="/Users/thaostein/heybot/trivy_output.json"):
 def build_prompt_with_logs(logs):
     try:
         # Read the humor base from file (contains the SYSTEM prompt)
-        with open(MODEL_HUMOR_PATH, "r") as file:
+        with open(MODEL_HUMOR_PATH, "r", encoding="utf-8") as file:
             humor_base = file.read().strip()
 
         # Format each vulnerability log entry

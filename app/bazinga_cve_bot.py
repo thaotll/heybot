@@ -39,7 +39,7 @@ SEVERITY_ORDER = {
 def load_humor_template():
     """Load the Sheldon Cooper-style humor template"""
     try:
-        with open(MODEL_HUMOR_PATH, 'r') as file:
+        with open(MODEL_HUMOR_PATH, 'r', encoding="utf-8") as file:
             return file.read().strip()
     except Exception as e:
         logging.error(f"Error loading humor template: {e}")
@@ -116,9 +116,9 @@ async def generate_security_report(vulnerabilities, humor_template):
         logging.error(f"Error generating report: {e}")
         return "This vulnerability analysis failed harder than Penny's cooking! Bazinga! 🔥"
 
-def load_trivy_logs(log_path="/Users/thaostein/heybot/trivy_output.json"):
+def load_trivy_logs(log_path="trivy_output.json"):
     try:
-        with open(log_path, "r") as file:
+        with open(log_path, "r", encoding="utf-8") as file:
             raw_data = json.load(file)
             vulnerabilities = []
             if isinstance(raw_data, dict):
