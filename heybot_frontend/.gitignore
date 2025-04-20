@@ -4,7 +4,9 @@
 /node_modules
 
 # next.js
-/.next/
+# We'll track .next/cache but include the rest
+/.next/*
+!/.next/cache/
 /out/
 
 # production
@@ -18,6 +20,7 @@ yarn-error.log*
 
 # env files
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -25,3 +28,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IMPORTANT: Make sure these directories are NOT ignored
+!/lib/
+!/components/
+!/hooks/
+!/app/
