@@ -30,6 +30,7 @@ export interface CodeAnalysis {
   timestamp: string
   status: "success" | "error" | "pending"
   feedback: string
+  author?: string
   issues: {
     type: "warning" | "error" | "info"
     message: string
@@ -75,6 +76,20 @@ export function CodeAnalysisDashboard() {
   const [loading, setLoading] = useState(true)
   const [selectedAnalysis, setSelectedAnalysis] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("code")
+  const [currentPage, setCurrentPage] = useState(1)
+
+  const ITEMS_PER_PAGE = 5
+
+  // Filter: nur Commits NACH 2185016 anzeigen
+  const referenceCommit = "2185016"
+  const indexOfReference = analyses.findIndex((c) => c.commitId.startsWith(referenceCommit))
+  const filteredAnalyses = indexOfReference > -1 ? analyses.slice(0, indexOfReference) : analyses
+
+  const totalPages = Math.ceil(filteredAnalyses.length / ITEMS_PER_PAGE)
+  const paginatedAnalyses = filteredAnalyses.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  )
 
   useEffect(() => {
     const loadAnalyses = async () => {
@@ -106,7 +121,7 @@ export function CodeAnalysisDashboard() {
         <CardHeader className="bg-[#0d1117] border-b border-[#30363d] px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-[#c9d1d9] text-base font-semibold">Neueste GitLab-Commits</CardTitle>
+              <CardTitle className="text-[#c9d1d9] text-base font-semibold">Neueste GitHub-Commits</CardTitle>
             </div>
             <div className="flex items-center gap-2 text-xs text-[#8b949e]">
               <Clock className="h-3 w-3" />
@@ -118,11 +133,11 @@ export function CodeAnalysisDashboard() {
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="text-center">
-                <div className="animate-spin h-8 w-8 border-4 border-[#58a6ff] border-t-transparent rounded-full mx-auto"></div>
+                <div className="animate-spin h-8 w-8 border-4 border-[#58a6ff] border-t-transparent rounded-full mx-auto" />
                 <p className="mt-2 text-sm text-[#8b949e]">Lade neueste Analysen...</p>
               </div>
             </div>
-          ) : analyses.length === 0 ? (
+          ) : filteredAnalyses.length === 0 ? (
             <div className="text-center py-8 px-4">
               <GitMerge className="h-10 w-10 mx-auto text-[#8b949e]/60" />
               <h3 className="mt-4 text-lg font-medium text-[#c9d1d9]">Keine Commits gefunden</h3>
@@ -132,38 +147,42 @@ export function CodeAnalysisDashboard() {
             </div>
           ) : (
             <div>
-              {analyses.map((analysis, index) => (
+              {paginatedAnalyses.map((analysis, index) => (
                 <div
                   key={analysis.id}
                   className={`p-4 cursor-pointer transition-colors ${
                     selectedAnalysis === analysis.id ? "bg-[#0d1117]" : "hover:bg-[#0d1117]"
-                  } ${index !== analyses.length - 1 ? "border-b border-[#30363d]" : ""}`}
+                  } ${index !== paginatedAnalyses.length - 1 ? "border-b border-[#30363d]" : ""}`}
                   onClick={() => setSelectedAnalysis(analysis.id)}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#0d1117] border border-[#30363d]">
-                        <GitBranch className="h-4 w-4 text-[#8b949e]" />
+                      <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#0d1117] border border-[#30363d]">
+                              <GitBranch className="h-4 w-4 text-[#8b949e]"/>
+                          </div>
+                          <div>
+                              <h3 className="text-sm font-semibold text-[#c9d1d9]">{analysis.feedback}</h3>
+                              <p className="text-xs text-[#8b949e] mt-1">
+                                  {analysis.repository}/{analysis.branch} •{" "}
+                                  <span className="font-mono">{analysis.commitId.substring(0, 7)}</span>
+                              </p>
+                              <p className="text-xs text-[#8b949e]">
+                                  {new Date(analysis.timestamp).toLocaleString()} •{" "}
+                                  <span className="font-semibold text-[#58a6ff]">{analysis.author}</span>
+                              </p>
+                          </div>
                       </div>
-                      <div>
-                        <h3 className="font-medium text-[#c9d1d9] flex items-center gap-2">
-                          {analysis.repository}/{analysis.branch}{" "}
-                          <span className="text-xs text-[#8b949e] font-mono">{analysis.commitId.substring(0, 7)}</span>
-                        </h3>
-                        <p className="text-xs text-[#8b949e]">{new Date(analysis.timestamp).toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={
-                          analysis.status === "success"
-                            ? "success"
-                            : analysis.status === "error"
-                              ? "destructive"
-                              : "outline"
-                        }
-                        className="flex items-center gap-1"
-                      >
+                      <div className="flex items-center gap-2">
+                          <Badge
+                              variant={
+                                  analysis.status === "success"
+                                      ? "success"
+                                      : analysis.status === "error"
+                                          ? "destructive"
+                                          : "outline"
+                              }
+                              className="flex items-center gap-1"
+                          >
                         {analysis.status === "success" ? (
                           <CheckCircle className="h-3 w-3" />
                         ) : analysis.status === "error" ? (
@@ -174,8 +193,8 @@ export function CodeAnalysisDashboard() {
                         {analysis.status === "success"
                           ? "Bestanden"
                           : analysis.status === "error"
-                            ? "Probleme gefunden"
-                            : "Analysiere"}
+                          ? "Probleme gefunden"
+                          : "Analysiere"}
                       </Badge>
 
                       {/* Security Badge */}
@@ -196,11 +215,31 @@ export function CodeAnalysisDashboard() {
                   </div>
                 </div>
               ))}
+
+              {/* Pagination Buttons */}
+              {totalPages > 1 && (
+                <div className="flex justify-center gap-2 py-4">
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`text-sm px-3 py-1 rounded ${
+                        currentPage === i + 1
+                          ? "bg-[#58a6ff] text-black font-semibold"
+                          : "bg-[#21262d] text-[#8b949e]"
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
+      {/* Analyse-Details */}
       {selectedAnalysisData && (
         <Card className="border border-[#30363d] bg-[#161b22] shadow-sm rounded-md overflow-hidden">
           <CardHeader className="bg-[#0d1117] border-b border-[#30363d] px-4 py-3">
@@ -223,28 +262,28 @@ export function CodeAnalysisDashboard() {
               <TabsList className="w-full flex border-b border-[#30363d] bg-[#161b22]">
                 <TabsTrigger
                   value="code"
-                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:border-b-2 data-[state=active]:border-[#58a6ff] data-[state=active]:text-[#58a6ff] rounded-none"
+                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:text-[#58a6ff]"
                 >
                   <FileCode className="h-4 w-4 mr-2" />
                   Code-Analyse
                 </TabsTrigger>
                 <TabsTrigger
                   value="security"
-                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:border-b-2 data-[state=active]:border-[#58a6ff] data-[state=active]:text-[#58a6ff] rounded-none"
+                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:text-[#58a6ff]"
                 >
                   <Shield className="h-4 w-4 mr-2" />
                   Sicherheits-Scans
                 </TabsTrigger>
                 <TabsTrigger
                   value="kubernetes"
-                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:border-b-2 data-[state=active]:border-[#58a6ff] data-[state=active]:text-[#58a6ff] rounded-none"
+                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:text-[#58a6ff]"
                 >
                   <Container className="h-4 w-4 mr-2" />
                   Kubernetes
                 </TabsTrigger>
                 <TabsTrigger
                   value="metrics"
-                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:border-b-2 data-[state=active]:border-[#58a6ff] data-[state=active]:text-[#58a6ff] rounded-none"
+                  className="flex-1 py-2 px-4 text-sm text-[#c9d1d9] data-[state=active]:text-[#58a6ff]"
                 >
                   <Server className="h-4 w-4 mr-2" />
                   System-Metriken

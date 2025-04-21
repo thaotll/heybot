@@ -129,6 +129,7 @@ celerybeat.pid
 
 # Environments
 #.env
+heybot_frontend/.env.local
 .venv
 env/
 venv/
