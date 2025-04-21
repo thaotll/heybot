@@ -18,24 +18,28 @@ export function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
     { critical: 0, high: 0, medium: 0, low: 0 },
   )
 
+  // Check if any scan has failed
+  const hasFailedScans = analysis.securityScans.some(scan => scan.status === "error")
   const hasCriticalIssues = totalVulnerabilities.critical > 0 || totalVulnerabilities.high > 0
 
   return (
     <div className="p-4 space-y-4">
       <div className="p-4 rounded-md bg-[#0d1117] border border-[#30363d]">
         <div className="flex items-start gap-3">
-          {!hasCriticalIssues ? (
+          {!hasFailedScans && !hasCriticalIssues ? (
             <CheckCircle className="h-5 w-5 text-[#3fb950] mt-0.5" />
           ) : (
             <AlertCircle className="h-5 w-5 text-[#f85149] mt-0.5" />
           )}
           <div>
             <h3 className="font-medium text-[#c9d1d9]">
-              {!hasCriticalIssues ? "Sicherheits-Scans bestanden" : "Sicherheitsprobleme erkannt"}
+              {!hasFailedScans && !hasCriticalIssues ? "Sicherheits-Scans bestanden" : "Sicherheitsprobleme erkannt"}
             </h3>
             <p className="text-[#8b949e] mt-1">
-              {!hasCriticalIssues
+              {!hasFailedScans && !hasCriticalIssues
                 ? "Keine kritischen Sicherheitsprobleme gefunden."
+                : hasFailedScans
+                ? "Einige Sicherheits-Scans sind fehlgeschlagen."
                 : "Kritische Sicherheitsprobleme wurden erkannt. Bitte beheben Sie diese Probleme vor dem Deployment."}
             </p>
           </div>

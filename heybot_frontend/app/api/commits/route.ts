@@ -30,11 +30,32 @@ export async function GET() {
 
     const commits = await res.json()
 
-    const analyses = commits.map((commit: any) => {
+    // Get the latest workflow run status for each commit
+    const analyses = await Promise.all(commits.map(async (commit: any) => {
       const sha = commit.sha
       const message = commit.commit.message
       const timestamp = commit.commit.author.date
       const author = commit.commit.author.name
+
+      // Get the workflow run status for this commit
+      const workflowRes = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs?head_sha=${sha}`,
+        {
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+          },
+        }
+      )
+
+      let status: "success" | "error" | "pending" = "pending"
+      if (workflowRes.ok) {
+        const workflowData = await workflowRes.json()
+        if (workflowData.workflow_runs.length > 0) {
+          const latestRun = workflowData.workflow_runs[0]
+          status = latestRun.conclusion === "success" ? "success" : "error"
+        }
+      }
 
       return {
         id: sha,
@@ -42,9 +63,9 @@ export async function GET() {
         repository: `${GITHUB_OWNER}/${GITHUB_REPO}`,
         branch: BRANCH,
         timestamp,
-        status: "success",
-        feedback: message, // nur die Message, nicht Autor+Text zusammen
-        author: author,     // Autor als eigenes Feld
+        status,
+        feedback: message,
+        author: author,
         issues: [],
         files: [],
         securityScans: [],
@@ -56,7 +77,7 @@ export async function GET() {
         memeUrl: undefined,
         humorMessage: undefined,
       }
-    })
+    }))
 
     return NextResponse.json(analyses)
   } catch (error) {

@@ -199,7 +199,7 @@ export function CodeAnalysisDashboard() {
 
                       {/* Security Badge */}
                       {analysis.securityScans.some(
-                        (scan) => scan.vulnerabilities.critical > 0 || scan.vulnerabilities.high > 0,
+                        (scan) => scan.status === "error" || scan.vulnerabilities.critical > 0 || scan.vulnerabilities.high > 0,
                       ) ? (
                         <Badge variant="destructive" className="flex items-center gap-1">
                           <Shield className="h-3 w-3" />
