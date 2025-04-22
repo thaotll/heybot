@@ -142,7 +142,7 @@ export function CodeAnalysisDashboard() {
               <GitMerge className="h-10 w-10 mx-auto text-[#8b949e]/60" />
               <h3 className="mt-4 text-lg font-medium text-[#c9d1d9]">Keine Commits gefunden</h3>
               <p className="mt-2 text-sm text-[#8b949e] max-w-md mx-auto">
-                Pushe Code zu deinem GitLab-Repository, um automatisierte Analysen zu sehen.
+                Pushe Code zu deinem GitHub-Repository, um automatisierte Analysen zu sehen.
               </p>
             </div>
           ) : (
