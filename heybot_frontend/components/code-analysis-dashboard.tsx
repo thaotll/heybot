@@ -17,10 +17,28 @@ import {
   Bot,
 } from "lucide-react"
 import { fetchLatestAnalyses } from "@/lib/actions"
-import { CodeAnalysisDetails } from "@/components/code-analysis-details"
-import { SecurityScanResults } from "@/components/security-scan-results"
-import { KubernetesStatus } from "@/components/kubernetes-status"
-import { SystemMetrics } from "@/components/system-metrics"
+import dynamic from "next/dynamic"
+
+// Lazy load child components
+const CodeAnalysisDetails = dynamic(() => import("@/components/code-analysis-details"), {
+  loading: () => <div className="animate-pulse h-64 bg-gray-700 rounded w-full"></div>,
+  ssr: true,
+});
+
+const SecurityScanResults = dynamic(() => import("@/components/security-scan-results"), {
+  loading: () => <div className="animate-pulse h-64 bg-gray-700 rounded w-full"></div>,
+  ssr: true,
+});
+
+const KubernetesStatus = dynamic(() => import("@/components/kubernetes-status"), {
+  loading: () => <div className="animate-pulse h-64 bg-gray-700 rounded w-full"></div>,
+  ssr: true,
+});
+
+const SystemMetrics = dynamic(() => import("@/components/system-metrics"), {
+  loading: () => <div className="animate-pulse h-64 bg-gray-700 rounded w-full"></div>,
+  ssr: true,
+});
 
 export interface CodeAnalysis {
   id: string
@@ -71,7 +89,7 @@ export interface CodeAnalysis {
   humorMessage?: string
 }
 
-export function CodeAnalysisDashboard() {
+function CodeAnalysisDashboard() {
   const [analyses, setAnalyses] = useState<CodeAnalysis[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedAnalysis, setSelectedAnalysis] = useState<string | null>(null)
@@ -312,3 +330,8 @@ export function CodeAnalysisDashboard() {
     </div>
   )
 }
+
+// Default export for dynamic import compatibility
+export default CodeAnalysisDashboard;
+// Named export for direct imports
+export { CodeAnalysisDashboard };

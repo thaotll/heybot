@@ -5,7 +5,7 @@ interface KubernetesStatusProps {
   analysis: CodeAnalysis
 }
 
-export function KubernetesStatus({ analysis }: KubernetesStatusProps) {
+function KubernetesStatusComponent({ analysis }: KubernetesStatusProps) {
   const { pods, deployments, services } = analysis.kubernetesStatus
   const allPodsRunning = pods.running === pods.total
   const allDeploymentsAvailable = deployments.available === deployments.total
@@ -141,3 +141,7 @@ export function KubernetesStatus({ analysis }: KubernetesStatusProps) {
     </div>
   )
 }
+
+// Export both ways
+export default KubernetesStatusComponent;
+export { KubernetesStatusComponent as KubernetesStatus };

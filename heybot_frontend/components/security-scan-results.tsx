@@ -5,7 +5,7 @@ interface SecurityScanResultsProps {
   analysis: CodeAnalysis
 }
 
-export function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
+function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
   // Calculate total vulnerabilities
   const totalVulnerabilities = analysis.securityScans.reduce(
     (acc, scan) => {
@@ -151,3 +151,8 @@ export function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
     </div>
   )
 }
+
+// Default export for dynamic imports
+export default SecurityScanResults;
+// Named export for direct imports
+export { SecurityScanResults };

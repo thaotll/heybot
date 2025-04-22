@@ -54,7 +54,7 @@ const networkData = [
   { time: "12:00", value: 70 },
 ]
 
-export function SystemMetrics({ analysis }: SystemMetricsProps) {
+function SystemMetricsComponent({ analysis }: SystemMetricsProps) {
   return (
     <div className="p-4 space-y-4">
       <div className="p-4 rounded-md bg-[#0d1117] border border-[#30363d]">
@@ -197,3 +197,7 @@ export function SystemMetrics({ analysis }: SystemMetricsProps) {
     </div>
   )
 }
+
+// Export both ways
+export default SystemMetricsComponent;
+export { SystemMetricsComponent as SystemMetrics };

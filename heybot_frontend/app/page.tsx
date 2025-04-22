@@ -1,4 +1,18 @@
-import { CodeAnalysisDashboard } from "@/components/code-analysis-dashboard"
+import dynamic from "next/dynamic"
+
+// Lazy load the CodeAnalysisDashboard component
+const CodeAnalysisDashboard = dynamic(
+  () => import("@/components/code-analysis-dashboard"),
+  {
+    loading: () => (
+      <div className="animate-pulse flex flex-col gap-4 w-full">
+        <div className="h-8 bg-gray-700 rounded w-1/3"></div>
+        <div className="h-64 bg-gray-700 rounded w-full"></div>
+        <div className="h-32 bg-gray-700 rounded w-full"></div>
+      </div>
+    ),
+  }
+)
 
 export default function Home() {
   return (

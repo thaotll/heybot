@@ -1,11 +1,11 @@
-import { AlertCircle, CheckCircle, Code, FileCode, Info } from "lucide-react"
+import { AlertCircle, AlertTriangle, Info, FileCode, CheckCircle } from "lucide-react"
 import type { CodeAnalysis } from "./code-analysis-dashboard"
 
 interface CodeAnalysisDetailsProps {
   analysis: CodeAnalysis
 }
 
-export function CodeAnalysisDetails({ analysis }: CodeAnalysisDetailsProps) {
+function CodeAnalysisDetailsComponent({ analysis }: CodeAnalysisDetailsProps) {
   // Display meme if there are issues and a meme URL is available
   const showMeme = analysis.issues.length > 0 && analysis.memeUrl
 
@@ -106,7 +106,7 @@ export function CodeAnalysisDetails({ analysis }: CodeAnalysisDetailsProps) {
             className="p-3 rounded-md border border-[#30363d] bg-[#0d1117] flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
-              <Code className="h-4 w-4 text-[#8b949e]" />
+              <FileCode className="h-4 w-4 text-[#8b949e]" />
               <span className="text-sm text-[#c9d1d9] font-mono">{file.name}</span>
             </div>
             <div className="flex items-center gap-3">
@@ -129,3 +129,7 @@ export function CodeAnalysisDetails({ analysis }: CodeAnalysisDetailsProps) {
     </div>
   )
 }
+
+// Export both ways
+export default CodeAnalysisDetailsComponent;
+export { CodeAnalysisDetailsComponent as CodeAnalysisDetails };
