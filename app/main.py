@@ -5,6 +5,7 @@ import aiohttp
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -26,6 +27,20 @@ if not DEEPSEEK_API_KEY:
 
 # Initialize DeepSeek client.
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+# Save message for frontend API access
+def save_message_to_file(message: str):
+    try:
+        # Absoluten Pfad zur Datei berechnen – basierend auf dem Speicherort dieser Python-Datei
+        base_path = Path(__file__).parent
+        file_path = base_path / "latest_deepseek_message.txt"
+
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write(message)
+
+        logging.info(f"DeepSeek-Nachricht gespeichert unter: {file_path}")
+    except Exception as e:
+        logging.error(f"Fehler beim Speichern: {e}")
 
 # Load Trivy logs from file
 def load_trivy_logs(log_path="trivy_output.json"):
@@ -145,6 +160,8 @@ async def main():
 
         response = await send_prompt_to_deepseek(prompt, temperature=1.1)
         final_message = clean_discord_message(response)
+
+        save_message_to_file(final_message)
         await send_discord_message_async(final_message)
 
     except Exception as e:

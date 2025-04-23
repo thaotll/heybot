@@ -5,6 +5,7 @@ import aiohttp
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -35,6 +36,20 @@ SEVERITY_ORDER = {
     "LOW": 3,
     "UNKNOWN": 4
 }
+
+
+def save_message_to_file(message: str, path="latest_deepseek_message.txt"):
+    try:
+        # Pfad absolut ausgehend von der aktuellen Datei (z. B. bazinga_cve_bot.py oder main.py)
+        base_path = Path(__file__).parent
+        file_path = base_path / path
+
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write(message)
+        logging.info(f"DeepSeek-Nachricht gespeichert unter {file_path}")
+    except Exception as e:
+        logging.error(f"Fehler beim Speichern: {e}")
+
 
 def load_humor_template():
     """Load the Sheldon Cooper-style humor template"""
@@ -150,8 +165,11 @@ async def main():
         humor_template = load_humor_template()
         
         report = await generate_security_report(vulnerabilities, humor_template)
+
+        save_message_to_file(report)  # 💾 Speichern für die API
         await send_discord_message_async(report)
-        logging.info("Full security report sent to Discord")
+
+        logging.info("Full security report sent to Discord and saved locally.")
 
     except Exception as e:
         logging.error(f"Error in main process: {e}")

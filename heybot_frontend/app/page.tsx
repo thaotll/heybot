@@ -1,4 +1,5 @@
 import dynamic from "next/dynamic"
+import {DeepSeekMessage} from "@/components/deepseek-message";
 
 // Lazy load the CodeAnalysisDashboard component
 const CodeAnalysisDashboard = dynamic(
@@ -25,6 +26,7 @@ export default function Home() {
           </p>
         </header>
         <CodeAnalysisDashboard />
+          <DeepSeekMessage />
       </div>
     </main>
   )
