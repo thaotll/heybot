@@ -114,12 +114,12 @@ function CodeAnalysisDashboard() {
     currentPage * ITEMS_PER_PAGE
   )
 
-  const loadAnalyses = async () => {
+  const loadAnalyses = async (forceRefresh = false) => {
     try {
       if (refreshing) return;
       
       setRefreshing(true)
-      const result = await fetchLatestAnalyses()
+      const result = await fetchLatestAnalyses(forceRefresh)
       setAnalyses(result.analyses)
       
       setRateLimitWarning(result.rateLimitInfo || null)
@@ -139,7 +139,7 @@ function CodeAnalysisDashboard() {
   }
 
   useEffect(() => {
-    loadAnalyses()
+    loadAnalyses(false) // Initial load without force refresh
     // Keine automatische Aktualisierung mehr
   }, [])
 
@@ -160,7 +160,7 @@ function CodeAnalysisDashboard() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={loadAnalyses}
+                onClick={() => loadAnalyses(true)}
                 disabled={refreshing}
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d] transition-colors"
               >

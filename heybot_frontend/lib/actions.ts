@@ -20,11 +20,11 @@ interface ApiResponse {
   rateLimitReset?: string;
 }
 
-export async function fetchLatestAnalyses(): Promise<{analyses: CodeAnalysis[], rateLimitInfo?: string}> {
+export async function fetchLatestAnalyses(forceRefresh = false): Promise<{analyses: CodeAnalysis[], rateLimitInfo?: string}> {
   try {
-    // Use cached data if available and not expired
+    // Use cached data if available and not expired, unless forceRefresh is true
     const now = Date.now();
-    if (cachedAnalyses && (now - lastFetchTime < CACHE_DURATION)) {
+    if (!forceRefresh && cachedAnalyses && (now - lastFetchTime < CACHE_DURATION)) {
       return {
         analyses: cachedAnalyses,
         rateLimitInfo: remainingRequests < 100 ? 
@@ -33,7 +33,7 @@ export async function fetchLatestAnalyses(): Promise<{analyses: CodeAnalysis[], 
       };
     }
 
-    const res = await fetch("/api/commits", {
+    const res = await fetch(`/api/commits${forceRefresh ? '?refresh=true' : ''}`, {
       method: "GET",
       headers: {
         Accept: "application/json",

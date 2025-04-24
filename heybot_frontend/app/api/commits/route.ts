@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 
 const GITHUB_OWNER = "thaotll"
 const GITHUB_REPO = "heybot"
@@ -15,12 +16,13 @@ const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 let remainingRateLimit: number = 5000; // Default GitHub authenticated rate limit
 let rateLimitResetTime: number = 0;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const now = Date.now();
+    const forceRefresh = request.nextUrl.searchParams.get('refresh') === 'true';
     
-    // Return cached data if available and not expired
-    if (cachedData && (now - cacheTime < CACHE_DURATION)) {
+    // Return cached data if available, not expired, and not force refreshing
+    if (!forceRefresh && cachedData && (now - cacheTime < CACHE_DURATION)) {
       return NextResponse.json({
         data: cachedData,
         source: "cache",
@@ -40,13 +42,16 @@ export async function GET() {
       }, { status: 429 });
     }
     
+    // Add a cache busting parameter to prevent GitHub from serving cached results
+    const cacheBuster = forceRefresh ? `&_=${Date.now()}` : '';
+    
     // Fetch commits with proper authorization
-    const res = await fetch(GITHUB_API_URL, {
+    const res = await fetch(`${GITHUB_API_URL}${cacheBuster}`, {
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${process.env.GITHUB_TOKEN || ""}`,
       },
-      next: { revalidate: 1800 }, // Cache for 30 minutes on the Next.js side
+      next: { revalidate: 0 }, // Don't use Next.js cache when force refreshing
     })
 
     // Update rate limit info from headers
@@ -118,7 +123,7 @@ export async function GET() {
 
     return NextResponse.json({
       data: analyses,
-      source: "api",
+      source: forceRefresh ? "refresh" : "api",
       remainingRequests: remainingRateLimit,
       cacheExpiresIn: Math.floor(CACHE_DURATION / 1000)
     })
