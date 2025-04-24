@@ -16,6 +16,7 @@ import {
   Container,
   Bot,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react"
 import { fetchLatestAnalyses } from "@/lib/actions"
 import dynamic from "next/dynamic"
@@ -97,6 +98,8 @@ function CodeAnalysisDashboard() {
   const [activeTab, setActiveTab] = useState("code")
   const [currentPage, setCurrentPage] = useState(1)
   const [refreshing, setRefreshing] = useState(false)
+  const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
+  const [lastRefreshTime, setLastRefreshTime] = useState<string>("")
 
   const ITEMS_PER_PAGE = 5
 
@@ -113,14 +116,22 @@ function CodeAnalysisDashboard() {
 
   const loadAnalyses = async () => {
     try {
+      if (refreshing) return;
+      
       setRefreshing(true)
-      const data = await fetchLatestAnalyses()
-      setAnalyses(data)
-      if (data.length > 0 && !selectedAnalysis) {
-        setSelectedAnalysis(data[0].id)
+      const result = await fetchLatestAnalyses()
+      setAnalyses(result.analyses)
+      
+      setRateLimitWarning(result.rateLimitInfo || null)
+      
+      if (result.analyses.length > 0 && !selectedAnalysis) {
+        setSelectedAnalysis(result.analyses[0].id)
       }
+      
+      setLastRefreshTime(new Date().toLocaleTimeString())
     } catch (error) {
       console.error("Failed to load analyses:", error)
+      setRateLimitWarning("Error refreshing data.")
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -141,6 +152,11 @@ function CodeAnalysisDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-[#c9d1d9] text-base font-semibold">Neueste GitHub-Commits</CardTitle>
+              {lastRefreshTime && (
+                <p className="text-xs text-[#8b949e] mt-1">
+                  Letztes Update: {lastRefreshTime}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -153,6 +169,13 @@ function CodeAnalysisDashboard() {
               </button>
             </div>
           </div>
+          
+          {rateLimitWarning && (
+            <div className="mt-2 text-xs text-amber-400 flex items-center">
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              {rateLimitWarning}
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
