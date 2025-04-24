@@ -15,6 +15,7 @@ import {
   Server,
   Container,
   Bot,
+  RefreshCw,
 } from "lucide-react"
 import { fetchLatestAnalyses } from "@/lib/actions"
 import dynamic from "next/dynamic"
@@ -95,6 +96,7 @@ function CodeAnalysisDashboard() {
   const [selectedAnalysis, setSelectedAnalysis] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("code")
   const [currentPage, setCurrentPage] = useState(1)
+  const [refreshing, setRefreshing] = useState(false)
 
   const ITEMS_PER_PAGE = 5
 
@@ -109,26 +111,25 @@ function CodeAnalysisDashboard() {
     currentPage * ITEMS_PER_PAGE
   )
 
-  useEffect(() => {
-    const loadAnalyses = async () => {
-      try {
-        const data = await fetchLatestAnalyses()
-        setAnalyses(data)
-        if (data.length > 0) {
-          setSelectedAnalysis(data[0].id)
-        }
-      } catch (error) {
-        console.error("Failed to load analyses:", error)
-      } finally {
-        setLoading(false)
+  const loadAnalyses = async () => {
+    try {
+      setRefreshing(true)
+      const data = await fetchLatestAnalyses()
+      setAnalyses(data)
+      if (data.length > 0 && !selectedAnalysis) {
+        setSelectedAnalysis(data[0].id)
       }
+    } catch (error) {
+      console.error("Failed to load analyses:", error)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
     }
+  }
 
+  useEffect(() => {
     loadAnalyses()
-
-    // Set up polling to check for new analyses every 30 seconds
-    const interval = setInterval(loadAnalyses, 30000)
-    return () => clearInterval(interval)
+    // Keine automatische Aktualisierung mehr
   }, [])
 
   const selectedAnalysisData = analyses.find((a) => a.id === selectedAnalysis) || null
@@ -141,9 +142,15 @@ function CodeAnalysisDashboard() {
             <div>
               <CardTitle className="text-[#c9d1d9] text-base font-semibold">Neueste GitHub-Commits</CardTitle>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[#8b949e]">
-              <Clock className="h-3 w-3" />
-              <span>Auto-Aktualisierung alle 30 Sekunden</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={loadAnalyses}
+                disabled={refreshing}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d] transition-colors"
+              >
+                <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Aktualisiere...' : 'Aktualisieren'}
+              </button>
             </div>
           </div>
         </CardHeader>
@@ -160,7 +167,8 @@ function CodeAnalysisDashboard() {
               <GitMerge className="h-10 w-10 mx-auto text-[#8b949e]/60" />
               <h3 className="mt-4 text-lg font-medium text-[#c9d1d9]">Keine Commits gefunden</h3>
               <p className="mt-2 text-sm text-[#8b949e] max-w-md mx-auto">
-                Pushe Code zu deinem GitHub-Repository, um automatisierte Analysen zu sehen.
+                Pushe Code zu deinem GitHub-Repository, um automatisierte Analysen zu sehen 
+                oder das GitHub API-Limit wurde erreicht. Bitte versuche es später erneut.
               </p>
             </div>
           ) : (
