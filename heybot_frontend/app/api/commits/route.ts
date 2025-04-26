@@ -7,6 +7,9 @@ const BRANCH = "main"
 
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?sha=${BRANCH}&per_page=10`
 
+// URL for fetching a specific commit (for file details)
+const COMMIT_DETAILS_URL = (sha: string) => `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${sha}`
+
 // Increased cache duration to 30 minutes to reduce API calls
 let cachedData: any = null;
 let cacheTime: number = 0;
@@ -93,6 +96,32 @@ export async function GET(request: NextRequest) {
       const timestamp = commit.commit.author.date
       const author = commit.commit.author.name
 
+      // Fetch commit details to get file information
+      let commitFiles: any[] = [];
+      try {
+        const commitDetailsRes = await fetch(COMMIT_DETAILS_URL(sha), {
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${process.env.GITHUB_TOKEN || ""}`,
+          },
+          next: { revalidate: 0 },
+        });
+        
+        if (commitDetailsRes.ok) {
+          const commitDetails = await commitDetailsRes.json();
+          commitFiles = commitDetails.files || [];
+        }
+      } catch (error) {
+        console.error("Error fetching commit details:", error);
+      }
+
+      // Map commit files to the expected format
+      const formattedFiles = commitFiles.map((file: any) => ({
+        name: file.filename,
+        status: file.status === "removed" ? "error" : "success",
+        issues: 0
+      }));
+
       // Instead of fetching workflow status for each commit,
       // just return a default status to save API calls
       return {
@@ -105,7 +134,7 @@ export async function GET(request: NextRequest) {
         feedback: message,
         author: author,
         issues: [],
-        files: [],
+        files: formattedFiles,
         securityScans: [],
         kubernetesStatus: {
           pods: { total: 0, running: 0, pending: 0, failed: 0 },
