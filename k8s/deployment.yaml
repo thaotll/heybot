@@ -16,6 +16,16 @@ spec:
       containers:
         - name: heybot
           image: ghcr.io/thaotll/heybot-with-trivy-output:latest
-          command: ["/bin/bash", "-c", "while true; do sleep 3600; done"]
+          command: [ "sh", "-c", "python3 /app/main.py && python3 /app/bazinga_cve_bot.py" ]
+          envFrom:
+            - secretRef:
+                name: heybot-secrets
+          volumeMounts:
+            - name: analysis-volume
+              mountPath: /app/analysis
+      volumes:
+        - name: analysis-volume
+          persistentVolumeClaim:
+            claimName: analysis-pvc
       imagePullSecrets:
-        - name: ghcr-secret  # Das ImagePullSecret, das du vorher erstellt hast
+        - name: ghcr-secret

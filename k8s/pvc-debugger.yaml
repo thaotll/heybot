@@ -1,0 +1,18 @@
+# pvc-debugger.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pvc-debugger
+spec:
+  containers:
+    - name: pvc-debugger
+      image: busybox
+      command: [ "sleep", "3600" ]
+      volumeMounts:
+        - name: analysis-volume
+          mountPath: /mnt
+  volumes:
+    - name: analysis-volume
+      persistentVolumeClaim:
+        claimName: analysis-pvc
+  restartPolicy: Never

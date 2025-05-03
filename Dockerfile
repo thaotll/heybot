@@ -4,16 +4,22 @@ FROM python:3.11-slim
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    curl \
+# 1) System-Tools installieren (curl + xz-utils für das Trivy-Install-Script)
+RUN apt-get update && \
+    apt-get install -y \
+      curl \
+      xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy app files
+# 2) Trivy CLI per Aquasecurity-Script installieren (immer die neueste)
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+  | sh -s -- -b /usr/local/bin
+
+# 3) Applikations-Code kopieren
 COPY ./app /app
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# 4) Python-Dependencies installieren
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# 5) Pod am Leben halten (zum Testen/Persistenz-Check)
+CMD ["sleep", "infinity"]
