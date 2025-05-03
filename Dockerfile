@@ -18,8 +18,12 @@ RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/
 # 3) Applikations-Code kopieren
 COPY ./app /app
 
-# 4) Python-Dependencies installieren
+# 4) Start-Skript hinzufügen
+COPY app/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+# 5) Python-Dependencies installieren
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# 5) Pod am Leben halten (zum Testen/Persistenz-Check)
-CMD ["sleep", "infinity"]
+# 6) Start beider Bots
+CMD ["/app/start.sh"]
