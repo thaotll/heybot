@@ -4,8 +4,12 @@ import asyncio
 import aiohttp
 import os
 import subprocess
+from dotenv import load_dotenv
 from openai import OpenAI
 from pathlib import Path
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -23,233 +27,178 @@ if not MODEL_HUMOR_PATH:
 if not DEEPSEEK_API_KEY:
     raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
 
-# Initialize DeepSeek client.
+# Optional: Warn if NVD API key is not set
+if not os.getenv("NVD_API_KEY"):
+    logging.warning("No NVD_API_KEY set – OWASP scan may be slow.")
+
+# Initialize DeepSeek client
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 
 def get_last_commit_id():
-    commit_file_path = Path(__file__).parent / "latest_commit.txt"
-
-    # Überprüfe, ob die Datei existiert und lese den Inhalt (Commit-ID)
-    if commit_file_path.exists():
-        with open(commit_file_path, "r", encoding="utf-8") as file:
-            return file.read().strip()
-    return None
+    path = Path(__file__).parent / "latest_commit.txt"
+    return path.read_text().strip() if path.exists() else None
 
 
-def save_commit_id(commit_id):
-    commit_file_path = Path(__file__).parent / "latest_commit.txt"
-
-    try:
-        with open(commit_file_path, "w", encoding="utf-8") as file:
-            file.write(commit_id)
-        logging.info(f"Commit-ID {commit_id} gespeichert unter: {commit_file_path}")
-    except Exception as e:
-        logging.error(f"Fehler beim Speichern der Commit-ID: {e}")
-
-# Save message for frontend API access
-def save_message_to_file(message: str):
-    try:
-        # Absoluten Pfad zur Datei berechnen – basierend auf dem Speicherort dieser Python-Datei
-        base_path = Path(__file__).parent
-        file_path = base_path / "latest_deepseek_message.txt"
-
-        with open(file_path, "w", encoding="utf-8") as file:
-            file.write(message)
-
-        logging.info(f"DeepSeek-Nachricht gespeichert unter: {file_path}")
-    except Exception as e:
-        logging.error(f"Fehler beim Speichern: {e}")
+def save_commit_id(cid):
+    (Path(__file__).parent / "latest_commit.txt").write_text(cid)
+    logging.info(f"Saved commit {cid}")
 
 
 def run_trivy_scan():
+    scan_target = "/app" if Path("/app").exists() else Path(__file__).parent.resolve()
+    Path("analysis").mkdir(exist_ok=True)
+    subprocess.run([
+        "trivy", "fs", str(scan_target), "-f", "json",
+        "-o", f"analysis/trivy-{CURRENT_COMMIT_ID}.json"
+    ], check=True)
+    logging.info("Trivy scan completed.")
+
+
+def run_owasp_scan():
+    scan_path = "/app" if Path("/app").exists() else Path(__file__).parent.resolve()
+    Path("analysis").mkdir(exist_ok=True)
+    subprocess.run([
+        "dependency-check", "--project", "heybot",
+        "--scan", str(scan_path), "--format", "JSON",
+        "--out", str(Path("analysis") / f"owasp-{CURRENT_COMMIT_ID}.json"),
+        "--nvdApiKey", os.getenv("NVD_API_KEY", "")
+    ], check=True)
+    logging.info("OWASP Dependency-Check completed.")
+
+
+def load_trivy_logs():
     try:
-        result = subprocess.run(
-            ["trivy", "fs", ".", "-f", "json", "-o", "trivy_output.json"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        logging.info("Trivy-Scan abgeschlossen.")
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Trivy-Scan fehlgeschlagen: {e.stderr.decode()}")
-
-# Load Trivy logs from file
-def load_trivy_logs(log_path="trivy_output.json"):
-    try:
-        with open(log_path, "r", encoding="utf-8") as file:
-            raw_data = json.load(file)
-            logging.debug(f"Raw Trivy log content: {json.dumps(raw_data, indent=2)}")
-
-            vulnerabilities = []
-            if isinstance(raw_data, dict) and "Results" in raw_data:
-                for result in raw_data["Results"]:
-                    vulns = result.get("Vulnerabilities", [])
-                    if isinstance(vulns, list):
-                        vulnerabilities.extend(vulns)
-            elif isinstance(raw_data, dict) and "vulnerabilities" in raw_data:
-                vulnerabilities = raw_data["vulnerabilities"]
-
-            if not isinstance(vulnerabilities, list):
-                logging.error("Log format error: Logs should be a list of dictionaries.")
-                return []
-
-            logging.info(f"Extracted {len(vulnerabilities)} vulnerability entries.")
-            return vulnerabilities
+        data = json.loads(Path(f"analysis/trivy-{CURRENT_COMMIT_ID}.json").read_text())
+        vulns = [v for r in data.get("Results", []) for v in r.get("Vulnerabilities", [])]
+        return vulns
     except Exception as e:
-        logging.error(f"Error loading logs: {e}")
+        logging.error(f"Failed to load Trivy logs: {e}")
         return []
 
 
-def summarize_vulnerabilities(vulns):
-    summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for v in vulns:
-        severity = v.get("Severity", "").lower()
-        if severity in summary:
-            summary[severity] += 1
-    return summary
-
-
-def save_analysis_json(vulns, message, commit_id="latest"):
+def load_owasp_logs():
     try:
-        summary = summarize_vulnerabilities(vulns)
-
-        result = {
-            "securityScans": [
-                {
-                    "tool": "trivy",
-                    "status": "success",
-                    "vulnerabilities": summary,
-                    "details": message,
-                }
-            ]
-        }
-
-        base_path = Path(__file__).parent / "analysis"
-        base_path.mkdir(parents=True, exist_ok=True)
-        out_path = base_path / f"{commit_id}.json"
-
-        with open(out_path, "w", encoding="utf-8") as file:
-            json.dump(result, file, indent=2)
-
-        logging.info(f"Analyse-Datei gespeichert unter: {out_path}")
+        data = json.loads(Path(f"analysis/owasp-{CURRENT_COMMIT_ID}.json").read_text())
+        return data.get("dependencies", [])
     except Exception as e:
-        logging.error(f"Fehler beim Speichern der Analyse-Datei: {e}")
+        logging.error(f"Failed to load OWASP logs: {e}")
+        return []
+
+
+def summarize_vulns(vulns):
+    cnt = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for v in vulns:
+        sev = v.get("Severity", "").lower()
+        if sev in cnt:
+            cnt[sev] += 1
+    return cnt
+
+
+def save_analysis_json(trivy, owasp):
+    trivy_summary = summarize_vulns(trivy)
+    owasp_total = sum(len(dep.get("vulnerabilities", [])) for dep in owasp)
+
+    result = {
+        "securityScans": [
+            {
+                "tool": "trivy",
+                "status": "success",
+                "vulnerabilities": trivy_summary,
+                "details": "Ergebnisse des Trivy-Dateisystemscans."
+            },
+            {
+                "tool": "owasp",
+                "status": "success",
+                "vulnerabilities": {
+                    "critical": 0,
+                    "high": 0,
+                    "medium": 0,
+                    "low": owasp_total
+                },
+                "details": "Ergebnisse des OWASP Dependency-Check."
+            }
+        ]
+    }
+    Path("analysis").mkdir(exist_ok=True)
+    out = Path("analysis") / f"{CURRENT_COMMIT_ID}.json"
+    out.write_text(json.dumps(result, indent=2))
+    logging.info(f"Saved combined analysis JSON to {out}")
 
 # Build funny + sarcastic prompt with logs
-def build_prompt_with_logs(logs):
+def build_prompt_with_logs(trivy_logs, owasp_logs):
     try:
-        # Read the humor base from file (contains the SYSTEM prompt)
-        with open(MODEL_HUMOR_PATH, "r", encoding="utf-8") as file:
-            humor_base = file.read().strip()
+        humor_base = Path(MODEL_HUMOR_PATH).read_text().strip()
+        trivy_text = "\n\n".join([
+            f"🔥 Trivy {i + 1}: {log.get('Title', 'No Title')}\nSeverity: {log.get('Severity', 'N/A')} | Package: {log.get('PkgName', 'N/A')}"
+            for i, log in enumerate(trivy_logs[:5])
+        ]) or "✅ Trivy found no vulnerabilities."
 
-        # Format each vulnerability log entry
-        logs_as_text = "\n\n".join([
-            f"🔥 Vulnerability {i+1}: {log.get('Title', 'No Title')}\n"
-            f"Severity: {log.get('Severity', 'N/A')} | CVSS: {log.get('CVSS', {}).get('bitnami', {}).get('V3Score', 'N/A')}\n"
-            f"CWE: {', '.join(log.get('CweIDs', [])) if log.get('CweIDs') else 'None'}\n"
-            f"Fix it (maybe?): {log.get('References', [])[0] if log.get('References') else 'No clue, good luck'}"
-            for i, log in enumerate(logs)
-        ])
+        owasp_text = "\n\n".join([
+            f"📦 OWASP {i + 1}: {dep.get('fileName', 'Unknown')} — " + \
+            ", ".join([v.get("name", "Unknown CVE") for v in dep.get("vulnerabilities", [])])
+            for i, dep in enumerate(owasp_logs[:5]) if dep.get("vulnerabilities")
+        ]) or "✅ OWASP found no vulnerable dependencies."
 
-        # Combine everything into the final prompt
-        return (
-            f"{humor_base}\n\n"  # This contains your SYSTEM prompt
-            f"Here are the vulnerabilities that need your sarcastic expertise:\n\n"
-            f"{logs_as_text}\n\n"
-            f"Now roast each one with:\n"
-            f"- Gordon Ramsay-level intensity\n"
-            f"- Stand-up comedian timing\n"
-            f"- DevOps intern frustration\n"
-            f"Bonus points for Sheldon Cooper references!"
-        )
+        return f"{humor_base}\n\n== Trivy Findings ==\n\n{trivy_text}\n\n== OWASP Findings ==\n\n{owasp_text}"
     except Exception as e:
-        logging.error(f"Error building prompt with humor path: {e}")
-        return ""
+        logging.error(f"Error building prompt: {e}")
+        return "Fehler beim Erstellen der Sicherheitszusammenfassung."
 
-# Send prompt to DeepSeek
-async def send_prompt_to_deepseek(prompt, model="deepseek-chat", temperature=1.0):
+
+def save_message_to_file(message: str):
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are a sarcastic security assistant"},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=temperature,
-            stream=False
-        )
-        logging.info("Prompt sent to DeepSeek successfully.")
-        return response.choices[0].message.content
+        path = Path(__file__).parent / "main_message.txt"
+        path.write_text(message, encoding="utf-8")
+        logging.info(f"DeepSeek message saved to {path}")
     except Exception as e:
-        logging.error(f"DeepSeek generate error: {e}")
-        return "Oops, I tried to be funny, but I crashed harder than your CI pipeline."
+        logging.error(f"Error saving message: {e}")
+
+
+async def send_prompt_to_deepseek(prompt):
+    resp = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": "You are a sarcastic security assistant."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=1.0
+    )
+    return resp.choices[0].message.content
 
 # Clean output for Discord
-def clean_discord_message(text, max_length=1900):
-    try:
-        cleaned = text.encode("utf-8", "ignore").decode("utf-8").replace('\u0000', '')
-        if len(cleaned) > max_length:
-            cleaned = cleaned[:max_length] + "\n... (truncated)"
-        return cleaned
-    except Exception as e:
-        logging.error(f"Error cleaning message: {e}")
-        return ": Message could not be processed."
+def clean(msg, mx=1900):
+    m = msg.replace('\u0000', '')
+    return (m[:mx] + "\n...") if len(m) > mx else m
 
-# Send to Discord
-async def send_discord_message_async(message):
-    try:
-        payload = {"content": message}
-        headers = {"Content-Type": "application/json"}
 
-        logging.debug(f"Discord Payload: {json.dumps(payload)}")
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(DISCORD_WEBHOOK_URL, json=payload, headers=headers) as response:
-                if response.status == 204:
-                    logging.debug("Message sent to Discord.")
-                else:
-                    logging.error(f"Discord responded with status: {response.status}")
-    except Exception as e:
-        logging.error(f"Error sending to Discord: {e}")
+async def send_discord(msg):
+    async with aiohttp.ClientSession() as session:
+        await session.post(DISCORD_WEBHOOK_URL, json={"content": msg})
 
 # Main entry
 async def main():
-    try:
-        # Gespeicherte Commit-ID holen
-        last_commit_id = get_last_commit_id()
+    last = get_last_commit_id()
+    if last == CURRENT_COMMIT_ID:
+        logging.info("Commit already processed.")
+        return
 
-        # Wenn es keine gespeicherte Commit-ID gibt oder der Commit sich geändert hat, diesen Prozess ausführen
-        if last_commit_id != CURRENT_COMMIT_ID:
-            logging.info(
-                f"Commit hat sich geändert (letztes Commit: {last_commit_id}, aktuelles Commit: {CURRENT_COMMIT_ID}). Führe den Scan aus.")
+    Path("analysis").mkdir(exist_ok=True)
+    run_owasp_scan()
+    run_trivy_scan()
 
-            run_trivy_scan()
-            logs = load_trivy_logs()
-            if not logs:
-                logging.info("Keine Schwachstellen gefunden – speichere trotzdem Analyse-Datei.")
-                logs = []
+    trivy = load_trivy_logs()
+    owasp = load_owasp_logs()
+    save_analysis_json(trivy, owasp)
 
-            prompt = build_prompt_with_logs(logs)
-            if not prompt:
-                logging.error("Failed to build prompt.")
-                return
+    prompt = build_prompt_with_logs(trivy, owasp)
+    ds_msg = await send_prompt_to_deepseek(prompt)
+    ds_msg = clean(ds_msg)
 
-            response = await send_prompt_to_deepseek(prompt, temperature=1.1)
-            final_message = clean_discord_message(response)
+    save_message_to_file(ds_msg)
+    await send_discord(ds_msg)
+    save_commit_id(CURRENT_COMMIT_ID)
 
-            save_message_to_file(final_message)
-            await send_discord_message_async(final_message)
-
-            save_analysis_json(logs, final_message, commit_id=CURRENT_COMMIT_ID)
-
-            # Aktuelle Commit-ID nach erfolgreichem Scan speichern
-            save_commit_id(CURRENT_COMMIT_ID)
-        else:
-            logging.info(f"Commit {CURRENT_COMMIT_ID} bereits verarbeitet. Keine Aktion erforderlich.")
-
-    except Exception as e:
-        logging.error(f"Error in main process: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
