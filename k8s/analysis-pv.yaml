@@ -1,0 +1,13 @@
+# analysis-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: analysis-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/analysis
+  persistentVolumeReclaimPolicy: Retain

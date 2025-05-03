@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: heybot-api
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: heybot-api
+  template:
+    metadata:
+      labels:
+        app: heybot-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/thaotll/heybot-api:latest
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: analysis-volume
+              mountPath: /app/analysis
+      volumes:
+        - name: analysis-volume
+          persistentVolumeClaim:
+            claimName: analysis-pvc
+      imagePullSecrets:
+        - name: ghcr-secret
