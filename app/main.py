@@ -27,9 +27,6 @@ if not MODEL_HUMOR_PATH:
 if not DEEPSEEK_API_KEY:
     raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
 
-# Optional: Warn if NVD API key is not set
-if not os.getenv("NVD_API_KEY"):
-    logging.warning("No NVD_API_KEY set – OWASP scan may be slow.")
 
 # Initialize DeepSeek client
 client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
@@ -61,9 +58,8 @@ def run_owasp_scan():
     subprocess.run([
         "dependency-check", "--project", "heybot",
         "--scan", str(scan_path), "--format", "JSON",
-        "--out", str(Path("analysis") / f"owasp-{CURRENT_COMMIT_ID}.json"),
-        "--nvdApiKey", os.getenv("NVD_API_KEY", "")
-    ], check=True)
+        "--out", str(Path("analysis") / f"owasp-{CURRENT_COMMIT_ID}.json")
+    ], check=True, env={**os.environ})
     logging.info("OWASP Dependency-Check completed.")
 
 
