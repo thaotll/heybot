@@ -5,7 +5,7 @@
 
 ---
 
-Precondtion: Docker for Desktop and running k8s-Cluster (local)
+Precondtion: Docker for Desktop and running k8s-Cluster (local).
 
 #### **1. ArgoCD deloyment and Connection**
 
