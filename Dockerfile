@@ -29,9 +29,6 @@ RUN curl -sSL https://github.com/jeremylong/DependencyCheck/releases/download/v$
 ARG CURRENT_COMMIT_ID
 ENV CURRENT_COMMIT_ID=$CURRENT_COMMIT_ID
 
-# 3.1) Schreibe CURRENT_COMMIT_ID in .env
-RUN echo "CURRENT_COMMIT_ID=$CURRENT_COMMIT_ID" > /app/.env
-
 # 4) Code & Requirements
 COPY ./app /app
 RUN pip install --no-cache-dir -r /app/requirements.txt
