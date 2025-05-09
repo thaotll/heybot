@@ -16,7 +16,12 @@ spec:
       containers:
         - name: heybot
           image: ghcr.io/thaotll/heybot-with-trivy-output:latest
-          command: [ "sh", "-c", "python3 /app/main.py && python3 /app/bazinga_cve_bot.py" ]
+          command: ["/app/start.sh"]
+          env:
+            - name: CURRENT_COMMIT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['commit-id']
           envFrom:
             - secretRef:
                 name: heybot-secrets
