@@ -28,12 +28,22 @@ jobs:
           mkdir -p $HOME/.kube
           echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
+          
+      - name: Debug Kubernetes connection
+        run: |
+          echo "Testing kubectl connection..."
+          kubectl cluster-info
+          echo "Current context:"
+          kubectl config current-context
+          echo "Available contexts:"
+          kubectl config get-contexts
 
       - name: Set CURRENT_COMMIT_ID in Kubernetes secret
         run: |
+          echo "Creating/updating secret with commit ID: ${{ github.sha }}"
           kubectl create secret generic heybot-secrets \
             --from-literal=CURRENT_COMMIT_ID=${{ github.sha }} \
-            --dry-run=client -o yaml | kubectl apply -f -
+            --dry-run=client -o yaml --validate=false | kubectl apply -f -
 
       - name: Build & push image
         uses: docker/build-push-action@v4
