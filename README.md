@@ -5,7 +5,7 @@
 
 ---
 
-Precondtion: Docker for Desktop and running k8s-Cluster (local)
+Precondtion: Docker for Desktop and running k8s-Cluster (local).
 
 #### **1. ArgoCD deloyment and Connection**
 
@@ -28,4 +28,4 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.pas
 1. go on heybot via shell
 2. run command: python bazinga_cve_bot.py
 3. See your message in discord channel
-```
+```.
