@@ -3,6 +3,24 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# macOS
+.DS_Store
+
+# Analysis output directory
+app/analysis/
+app/analysis/*.json
+app/analysis/**/*.json
+app/analysis/owasp-data/
+app/analysis/owasp-data/*
+analysis/
+heybot_frontend/analysis/
+
+# Node.js
+node_modules/
+heybot_frontend/node_modules/
+package-lock.json
+package.json
+
 # C extensions
 *.so
 
