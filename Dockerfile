@@ -25,8 +25,9 @@ RUN curl -sSL https://github.com/jeremylong/DependencyCheck/releases/download/v$
     ln -s /usr/local/dependency-check/bin/dependency-check.sh /usr/local/bin/dependency-check && \
     rm /tmp/dc.zip
 
-# 3) Set Commit ID
-ENV CURRENT_COMMIT_ID=d3fdaf43eb639319cb757f3d19dfbef4b9312ed3
+# 3) Set Commit ID (jetzt als Build-Argument)
+ARG CURRENT_COMMIT_ID=latest
+ENV CURRENT_COMMIT_ID=$CURRENT_COMMIT_ID
 
 # 4) Code & Requirements
 COPY ./app /app

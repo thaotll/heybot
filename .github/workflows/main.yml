@@ -1,4 +1,4 @@
-name: Docker Image Scan
+name: Docker Image Scan and Deploy
 
 on: [push]
 
@@ -7,13 +7,22 @@ env:
   KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
 
 jobs:
-  trivy_scan:
+  build_scan_deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the code.
+      # Checkout the code with write permission
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+        
+      # Get current commit ID
+      - name: Get current commit ID
+        id: get_commit_id
+        run: |
+          echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
       # Login to GitHub Container Registry
       - name: Login to GitHub Container Registry
@@ -23,50 +32,80 @@ jobs:
           username: ${{ github.actor }}  # Use the GitHub username (actor)
           password: ${{ secrets.GHCR_TOKEN }}  # Use the secret token
 
-      # Build the Docker image
-      - name: Build the hello-docker Docker image
+      # Build and push the Docker image with current commit ID
+      - name: Build and push Docker image
         run: |
-          docker build -t ghcr.io/$USER/heybot:latest .
+          docker build \
+            --build-arg CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
+            -t ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }} \
+            -t ghcr.io/$USER/heybot:latest .
+          
+          docker push ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}
+          docker push ghcr.io/$USER/heybot:latest
 
-      # Install Trivy (Specific version v0.60.1)
+      # Install Trivy
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.2.0
         with:
           version: latest # Specify the desired version
 
-      # Scan the Docker image for vulnerabilities
-      - name: Scan Docker image for vulnerabilities
-        run: |
-          trivy image --severity HIGH,CRITICAL --format json --output trivy_output.json ghcr.io/$USER/heybot:latest
-      
-      # Build the new Docker image with trivy_output.json
-      - name: Build the new Docker image with trivy_output.json
-        run: |
-          docker build -t ghcr.io/$USER/heybot-with-trivy-output:latest -f Dockerfile.trivy-analysis .
-      
-      # Push the Docker image to GitHub Container Registry
-      - name: Push the Docker image to GitHub Container Registry
-        run: |
-          docker push ghcr.io/$USER/heybot-with-trivy-output:latest
 
-      # Debug Secret
-      - name: Debug Secret
+      # Run Trivy scan and security analysis
+      - name: Run security analysis
         run: |
-          if [ -z "${KUBECONFIG_BASE64}" ]; then
-            echo "Secret ist leer oder nicht verfügbar!"
-            exit 1
-          else
-            echo "Secret ist gesetzt (Wert wird nicht angezeigt)."
-          fi
-        env:
-          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+          # Create analysis directory
+          mkdir -p ./analysis
+          
+          # Run Trivy scan
+          trivy image \
+            --severity HIGH,CRITICAL,MEDIUM,LOW \
+            --format json \
+            --output ./analysis/trivy-${{ env.CURRENT_COMMIT_ID }}.json \
+            ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}
+          
+          # Run security analysis container
+          docker run --rm \
+            -v $(pwd)/analysis:/app/analysis \
+            -e DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
+            -e MODEL_HUMOR_PATH=/app/humor_template.txt \
+            -e MODEL_HUMOR_PATH1=/app/humor_template.txt \
+            -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
+            -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
+            ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}
 
-      # Set up kubeconfig
-      - name: Set up kubeconfig
+      # Set up kubectl for deployment
+      - name: Setup kubectl
         run: |
           mkdir -p $HOME/.kube
-          ls -la $HOME/.kube
           echo "${KUBECONFIG_BASE64}" | base64 -d > $HOME/.kube/config
-          ls -la $HOME/.kube
         env:
           KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+      
+      # Install kubectl
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      # Update Kubernetes deployment and repo files
+      - name: Update Kubernetes deployment
+        run: |
+          # Update deployment YAML files in repo
+          sed -i "s/commit-id: \".*\"/commit-id: \"${{ env.CURRENT_COMMIT_ID }}\"/" k8s/deployment.yaml
+          sed -i "s|image: ghcr.io/$USER/heybot.*|image: ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}|" k8s/deployment.yaml
+          sed -i "s|image: ghcr.io/$USER/heybot-api:.*|image: ghcr.io/$USER/heybot-api:${{ env.CURRENT_COMMIT_ID }}|" k8s/heybot-api-deployment.yaml
+          
+          # Apply deployments
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/heybot-api-deployment.yaml
+          
+          # Wait for deployments to complete
+          kubectl rollout status deployment/heybot-app
+          kubectl rollout status deployment/heybot-api
+          
+          # Commit and push updated files
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add k8s/deployment.yaml k8s/heybot-api-deployment.yaml
+          git commit -m "Update deployment to ${{ env.CURRENT_COMMIT_ID }}"
+          git push
