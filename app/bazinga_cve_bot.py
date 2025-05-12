@@ -26,8 +26,11 @@ if not MODEL_HUMOR_PATH1:
 if not DEEPSEEK_API_KEY:
     raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
 
-# Initialize DeepSeek client
-client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+# Initialize OpenAI client
+client = OpenAI(
+    api_key=DEEPSEEK_API_KEY,
+    base_url="https://api.deepseek.com"
+)
 
 # Severity ranking for sorting
 SEVERITY_ORDER = {

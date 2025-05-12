@@ -11,12 +11,14 @@ const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_RE
 
 // URL for fetching a specific commit (for file details)
 const COMMIT_DETAILS_URL = (sha: string) => `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/${sha}`
-const ANALYSIS_PATH = "/app/analysis"
+
+// Definiert einen einzigen festen Pfad für die Analysedateien
+const ANALYSIS_PATH = "/Users/thaostein/heybot/app/analysis"
 
 // Increased cache duration to 30 minutes to reduce API calls
 let cachedData: any = null;
 let cacheTime: number = 0;
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const CACHE_DURATION = 0
 
 // Track remaining rate limit
 let commitDetailsCache = new Map<string, any>()
@@ -131,21 +133,82 @@ export async function GET(request: NextRequest) {
           issues: 0,
         }))
 
-        // Analyse laden
+        // Analyse laden - verschiedene Dateiformate probieren
         let securityScans: any[] = []
         let humorMessage: string | undefined = undefined
         let memeUrl: string | undefined = undefined
 
         try {
-          const analysisFile = path.join(ANALYSIS_PATH, `${sha}.json`)
-          if (fs.existsSync(analysisFile)) {
-            const data = JSON.parse(fs.readFileSync(analysisFile, "utf-8"))
-            if (Array.isArray(data.securityScans)) securityScans = data.securityScans
+          // Verändert den Teil, wo die Commit-Analyse im Loop geladen wird
+          let data: any = null
+          
+          // Versucht die kombinierte Datei zu lesen
+          const filesToTry = [
+            path.join(ANALYSIS_PATH, `${sha}.json`),
+            path.join(ANALYSIS_PATH, `trivy-${sha}.json`)
+          ];
+          
+          for (const file of filesToTry) {
+            if (fs.existsSync(file)) {
+              console.log(`Loading analysis from ${file}`)
+              const fileContent = fs.readFileSync(file, "utf-8")
+              data = JSON.parse(fileContent)
+              break
+            }
+          }
+          
+          // Wenn keine Datei gefunden wurde, leere Scans zurückgeben
+          if (!data) {
+            console.warn(`No analysis file found for commit ${sha}`)
+            securityScans = [
+              {
+                tool: "trivy",
+                status: "warning",
+                vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
+                details: "Keine Analysedaten gefunden."
+              },
+              {
+                tool: "owasp",
+                status: "warning",
+                vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
+                details: "Keine Analysedaten gefunden."
+              }
+            ]
+          } else {
+            // Daten verarbeiten
+            if (Array.isArray(data.securityScans)) {
+              securityScans = data.securityScans
+            } else if (data.Results) {
+              // Falls es ein Trivy-Format ist
+              securityScans = [
+                {
+                  tool: "trivy",
+                  status: "success",
+                  vulnerabilities: summarizeVulnerabilities(data.Results),
+                  details: "Trivy-Daten direkt geladen."
+                }
+              ]
+            }
+            
             if (data.humorMessage) humorMessage = data.humorMessage
             if (data.memeUrl) memeUrl = data.memeUrl
           }
         } catch (err) {
           console.error(`Fehler beim Laden der Analyse für Commit ${sha}:`, err)
+          securityScans = [
+            {
+              tool: "trivy",
+              status: "error",
+              vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
+              details: "Fehler beim Laden der Analysedaten."
+            },
+            {
+              tool: "owasp",
+              status: "error", 
+              vulnerabilities: { critical: 0, high: 0, medium: 0, low: 0 },
+              details: "Fehler beim Laden der Analysedaten."
+            }
+          ]
         }
 
         const hasCriticalIssues = securityScans.some(scan => scan.vulnerabilities?.critical > 0 || scan.vulnerabilities?.high > 0)
@@ -206,4 +269,22 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+// Hilfsfunktion zum Zusammenfassen der Trivy-Ergebnisse
+function summarizeVulnerabilities(results: any[] = []) {
+  const summary = { critical: 0, high: 0, medium: 0, low: 0 };
+  
+  for (const result of results) {
+    if (!result.Vulnerabilities) continue;
+    
+    for (const vuln of result.Vulnerabilities) {
+      const severity = vuln.Severity.toLowerCase();
+      if (severity in summary) {
+        summary[severity as keyof typeof summary]++;
+      }
+    }
+  }
+  
+  return summary;
 }

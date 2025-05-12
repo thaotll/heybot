@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: heybot-frontend
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: heybot-frontend
+  template:
+    metadata:
+      labels:
+        app: heybot-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/thaotll/heybot-frontend:latest
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: analysis-volume
+              mountPath: /app/public/analysis
+              readOnly: true
+      volumes:
+        - name: analysis-volume
+          persistentVolumeClaim:
+            claimName: analysis-pvc
+      imagePullSecrets:
+        - name: ghcr-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: heybot-frontend
+spec:
+  selector:
+    app: heybot-frontend
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: LoadBalancer 

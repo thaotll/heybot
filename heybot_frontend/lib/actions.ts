@@ -5,7 +5,7 @@ import type { CodeAnalysis } from "@/components/code-analysis-dashboard"
 // Client-side cache
 let cachedAnalyses: CodeAnalysis[] | null = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // Increased to 5 minutes
+const CACHE_DURATION = 5 * 60 * 1000; // 5 Minuten
 
 // Rate limit tracking
 let remainingRequests: number = 5000;
@@ -79,8 +79,11 @@ export async function fetchLatestAnalyses(forceRefresh = false): Promise<{analys
       remainingRequests = response.remainingRequests;
     }
     
+    // Daten direkt aus der commits-Route verwenden - keine separate Abfrage für Sicherheitsdaten
+    const analyses = response.data;
+    
     // Update cache
-    cachedAnalyses = response.data as CodeAnalysis[];
+    cachedAnalyses = analyses;
     lastFetchTime = now;
     
     let rateLimitInfo;
@@ -89,7 +92,7 @@ export async function fetchLatestAnalyses(forceRefresh = false): Promise<{analys
     }
     
     return {
-      analyses: cachedAnalyses,
+      analyses,
       rateLimitInfo
     };
   } catch (error) {

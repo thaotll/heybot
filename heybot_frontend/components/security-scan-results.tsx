@@ -5,27 +5,13 @@ interface SecurityScanResultsProps {
   analysis: CodeAnalysis
 }
 
+type Severity = "critical" | "high" | "medium" | "low"
+
 function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
-  // Dummy-Werte, wenn nichts geladen werden konnte
-  const dummyScans = [
-    {
-      tool: "trivy",
-      status: "success",
-      vulnerabilities: { critical: 0, high: 0, medium: 1, low: 3 },
-      details: "Eine mittelschwere Abhängigkeit sollte aktualisiert werden.",
-    },
-    {
-      tool: "owasp",
-      status: "success",
-      vulnerabilities: { critical: 0, high: 0, medium: 0, low: 2 },
-      details: "Keine kritischen Sicherheitsprobleme gefunden.",
-    },
-  ]
+  // Verwendet nur die echten Scan-Ergebnisse
+  const scans = analysis.securityScans || []
 
-  // Wenn keine echten Scans vorhanden sind, Dummy-Daten verwenden
-  const scans = analysis.securityScans?.length ? analysis.securityScans : dummyScans
-
-    // Calculate total vulnerabilities
+  // Calculate total vulnerabilities
   const totalVulnerabilities = scans.reduce(
     (acc, scan) => {
       acc.critical += scan.vulnerabilities.critical
@@ -37,7 +23,7 @@ function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
     { critical: 0, high: 0, medium: 0, low: 0 },
   )
 
-      // Check if any scan has failed
+  // Check if any scan has failed
   const hasFailedScans = scans.some(scan => scan.status === "error")
   const hasCriticalIssues = totalVulnerabilities.critical > 0 || totalVulnerabilities.high > 0
 
@@ -69,7 +55,7 @@ function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
 
       <div className="grid grid-cols-4 gap-4">
         {["Kritisch", "Hoch", "Mittel", "Niedrig"].map((label, i) => {
-          const key = ["critical", "high", "medium", "low"][i] as keyof typeof totalVulnerabilities
+          const key = ["critical", "high", "medium", "low"][i] as Severity
           const color =
             key === "critical" || key === "high"
               ? totalVulnerabilities[key] > 0
@@ -126,23 +112,24 @@ function SecurityScanResults({ analysis }: SecurityScanResultsProps) {
               <div className="grid grid-cols-4 gap-3 mb-4">
                 {["critical", "high", "medium", "low"].map((sev, i) => {
                   const label = ["Kritisch", "Hoch", "Mittel", "Niedrig"][i]
+                  const severity = sev as Severity
                   const sevColor =
-                    sev === "critical" || sev === "high"
-                      ? scan.vulnerabilities[sev] > 0
+                    severity === "critical" || severity === "high"
+                      ? scan.vulnerabilities[severity] > 0
                         ? "text-[#f85149]"
                         : "text-[#c9d1d9]"
-                      : sev === "medium"
-                      ? scan.vulnerabilities[sev] > 0
+                      : severity === "medium"
+                      ? scan.vulnerabilities[severity] > 0
                         ? "text-[#d29922]"
                         : "text-[#c9d1d9]"
                       : "text-[#c9d1d9]"
                   return (
                     <div
-                      key={sev}
+                      key={severity}
                       className="text-center p-2 rounded-md bg-[#0d1117] border border-[#30363d]"
                     >
                       <div className={`text-lg font-bold ${sevColor}`}>
-                        {scan.vulnerabilities[sev]}
+                        {scan.vulnerabilities[severity]}
                       </div>
                       <p className="text-xs text-[#8b949e]">{label}</p>
                     </div>

@@ -9,6 +9,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/security-analysis/:path*',
+        destination: 'http://localhost:8000/security-analysis/:path*',
+      },
+    ]
+  },
 }
 
 export default nextConfig

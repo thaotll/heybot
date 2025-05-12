@@ -1,17 +1,22 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
+from typing import Optional
+from main import get_commit_analysis
+import json
+import logging
 
 app = FastAPI()
 
 # CORS erlauben
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In Produktion sollte dies eingeschränkt werden
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Absoluter Pfad zur Datei
@@ -69,3 +74,37 @@ async def save_deepseek_message(payload: DeepSeekMessage):
         return {"status": "success", "message": payload.message}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.get("/security-analysis/{commit_id}")
+async def get_security_analysis(commit_id: str):
+    """
+    Liefert die Sicherheitsanalyse für einen spezifischen Commit.
+    Falls keine Analyse vorhanden ist, wird sie automatisch durchgeführt.
+    """
+    try:
+        analysis = get_commit_analysis(commit_id)
+        if analysis is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Keine Analyse für Commit {commit_id} gefunden"
+            )
+        return analysis
+    except Exception as e:
+        logging.error(f"Error analyzing commit {commit_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fehler bei der Analyse: {str(e)}"
+        )
+
+@app.get("/security-analysis/latest")
+async def get_latest_analysis():
+    """
+    Liefert die Sicherheitsanalyse des neuesten Commits.
+    """
+    try:
+        latest_file = BASE_DIR / "analysis" / "latest.json"
+        if not latest_file.exists():
+            raise HTTPException(status_code=404, detail="Keine aktuelle Analyse verfügbar")
+        return json.loads(latest_file.read_text())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

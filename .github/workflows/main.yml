@@ -4,6 +4,7 @@ on: [push]
 
 env:
   USER: "thaotll"
+  KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
 
 jobs:
   trivy_scan:
@@ -47,3 +48,25 @@ jobs:
       - name: Push the Docker image to GitHub Container Registry
         run: |
           docker push ghcr.io/$USER/heybot-with-trivy-output:latest
+
+      # Debug Secret
+      - name: Debug Secret
+        run: |
+          if [ -z "${KUBECONFIG_BASE64}" ]; then
+            echo "Secret ist leer oder nicht verfügbar!"
+            exit 1
+          else
+            echo "Secret ist gesetzt (Wert wird nicht angezeigt)."
+          fi
+        env:
+          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
+
+      # Set up kubeconfig
+      - name: Set up kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          ls -la $HOME/.kube
+          echo "${KUBECONFIG_BASE64}" | base64 -d > $HOME/.kube/config
+          ls -la $HOME/.kube
+        env:
+          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
