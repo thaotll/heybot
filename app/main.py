@@ -11,9 +11,6 @@ from openai import OpenAI
 from pathlib import Path
 import datetime
 
-# Load environment variables
-load_dotenv()
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, 
@@ -23,6 +20,18 @@ logging.basicConfig(
         logging.FileHandler("heybot_scan.log")  # Ausgabe in eine Datei
     ]
 )
+
+# Expliziten Pfad für .env-Datei definieren
+ENV_FILE_PATH = Path(__file__).parent / ".env"
+
+# Load environment variables - prioritize .env file
+if ENV_FILE_PATH.exists():
+    logging.info(f"Lade Umgebungsvariablen aus lokaler .env-Datei: {ENV_FILE_PATH}")
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True)
+else:
+    # Falls keine .env-Datei existiert, versuche die Standard-load_dotenv
+    logging.warning(f".env-Datei nicht gefunden unter: {ENV_FILE_PATH}")
+    load_dotenv()
 
 # Zeige Startinformationen
 logging.info("=" * 50)

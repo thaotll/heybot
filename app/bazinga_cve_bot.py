@@ -7,11 +7,20 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+# Expliziten Pfad für .env-Datei definieren
+ENV_FILE_PATH = Path(__file__).parent / ".env"
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
+
+# Load environment variables - prioritize .env file
+if ENV_FILE_PATH.exists():
+    logging.info(f"Lade Umgebungsvariablen aus lokaler .env-Datei: {ENV_FILE_PATH}")
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True)
+else:
+    # Falls keine .env-Datei existiert, versuche die Standard-load_dotenv
+    logging.warning(f".env-Datei nicht gefunden unter: {ENV_FILE_PATH}")
+    load_dotenv()
 
 # Variables from the .env file
 DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
@@ -23,15 +32,10 @@ if not DISCORD_WEBHOOK_URL:
     raise ValueError("DISCORD_WEBHOOK_URL is missing in the .env file.")
 
 if not MODEL_HUMOR_PATH1:
-    logging.warning("MODEL_HUMOR_PATH1 ist nicht gesetzt. Standard-Humor-Template wird verwendet.")
-    # Setze einen Standard-Pfad
-    MODEL_HUMOR_PATH1 = "/app/default_humor_template.txt"
-    # Erstelle eine Standarddatei, falls sie nicht existiert
-    if not os.path.exists(MODEL_HUMOR_PATH1):
-        with open(MODEL_HUMOR_PATH1, 'w') as f:
-            f.write("You are Sheldon Cooper from Big Bang Theory...")
+    raise ValueError("MODEL_HUMOR_PATH1 is missing in the .env file.")
 
 if not DEEPSEEK_API_KEY:
+    raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
 
 # Initialize OpenAI client
 client = OpenAI(
