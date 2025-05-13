@@ -41,7 +41,7 @@ ANALYSIS_DIR = BASE_DIR / "analysis"
 ANALYSIS_DIR.mkdir(exist_ok=True)
 
 # Environment Variables
-DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
+DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
 MODEL_HUMOR_PATH = os.getenv('MODEL_HUMOR_PATH')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
@@ -49,17 +49,53 @@ CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 # Debug-Ausgabe der Umgebungsvariablen
 logging.info(f"Umgebungsvariablen:")
 logging.info(f"DISCORD_WEBHOOK_URL ist {'gesetzt' if DISCORD_WEBHOOK_URL else 'NICHT GESETZT'}")
+logging.info(f"DISCORD_WEBHOOK_URL Länge: {len(DISCORD_WEBHOOK_URL)} Zeichen")
+if DISCORD_WEBHOOK_URL:
+    logging.info(f"DISCORD_WEBHOOK_URL erste 10 Zeichen: {DISCORD_WEBHOOK_URL[:10]}")
+    logging.info(f"DISCORD_WEBHOOK_URL letzte 10 Zeichen: {DISCORD_WEBHOOK_URL[-10:] if len(DISCORD_WEBHOOK_URL) >= 10 else DISCORD_WEBHOOK_URL}")
 logging.info(f"MODEL_HUMOR_PATH ist {'gesetzt' if MODEL_HUMOR_PATH else 'NICHT GESETZT'}")
 logging.info(f"DEEPSEEK_API_KEY ist {'gesetzt' if DEEPSEEK_API_KEY else 'NICHT GESETZT'}")
 logging.info(f"CURRENT_COMMIT_ID ist {CURRENT_COMMIT_ID}")
+
+# Versuchen wir, die Variable aus der Umgebung direkt zu lesen
+try:
+    raw_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL', '')
+    logging.info(f"Direkt aus os.environ: DISCORD_WEBHOOK_URL ist {'vorhanden' if raw_webhook_url else 'NICHT VORHANDEN'}")
+    if raw_webhook_url:
+        logging.info(f"Länge: {len(raw_webhook_url)} Zeichen")
+except Exception as e:
+    logging.error(f"Fehler beim direkten Zugriff auf os.environ: {e}")
 
 # Ausgabe aller Umgebungsvariablen zur Fehlersuche
 logging.info("Alle Umgebungsvariablen:")
 for key, value in os.environ.items():
     logging.info(f"{key}: {'*****' if 'KEY' in key or 'TOKEN' in key or 'SECRET' in key or 'URL' in key else value}")
 
-if not DISCORD_WEBHOOK_URL:
+# Versuche aus verschiedenen Quellen die Variable zu laden
+webhook_urls = []
+if os.path.exists('.env'):
+    logging.info("Versuche .env-Datei zu laden")
+    try:
+        load_dotenv('.env')
+        env_webhook = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
+        if env_webhook:
+            webhook_urls.append(('dotenv', env_webhook))
+    except Exception as e:
+        logging.error(f"Fehler beim Laden der .env-Datei: {e}")
+
+if DISCORD_WEBHOOK_URL:
+    webhook_urls.append(('os.getenv', DISCORD_WEBHOOK_URL))
+
+if raw_webhook_url:
+    webhook_urls.append(('os.environ', raw_webhook_url))
+
+# Prüfe, ob ein gültiger Webhook gefunden wurde
+if not webhook_urls:
     raise ValueError("DISCORD_WEBHOOK_URL ist in der Umgebung nicht vorhanden (Kubernetes Secret). Bitte überprüfen Sie die Secret-Konfiguration.")
+
+# Verwende den ersten gefundenen Webhook
+source, DISCORD_WEBHOOK_URL = webhook_urls[0]
+logging.info(f"Verwende DISCORD_WEBHOOK_URL aus Quelle: {source}")
 
 if not CURRENT_COMMIT_ID or CURRENT_COMMIT_ID == 'latest':
     logging.warning("CURRENT_COMMIT_ID ist nicht gesetzt oder hat den Wert 'latest'. Der Commit wird möglicherweise nicht korrekt identifiziert.")

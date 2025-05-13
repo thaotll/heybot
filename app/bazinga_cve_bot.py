@@ -22,7 +22,7 @@ logging.info(f"Aktuelle Zeit: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:
 logging.info("=" * 50)
 
 # Variables from the .env file
-DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
+DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
 MODEL_HUMOR_PATH1 = os.getenv('MODEL_HUMOR_PATH1')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
@@ -30,10 +30,45 @@ CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 # Debug-Ausgabe der Umgebungsvariablen
 logging.info(f"Umgebungsvariablen in bazinga_cve_bot.py:")
 logging.info(f"DISCORD_WEBHOOK_URL ist {'gesetzt' if DISCORD_WEBHOOK_URL else 'NICHT GESETZT'}")
+logging.info(f"DISCORD_WEBHOOK_URL Länge: {len(DISCORD_WEBHOOK_URL)} Zeichen")
+if DISCORD_WEBHOOK_URL:
+    logging.info(f"DISCORD_WEBHOOK_URL erste 10 Zeichen: {DISCORD_WEBHOOK_URL[:10]}")
 logging.info(f"CURRENT_COMMIT_ID ist {CURRENT_COMMIT_ID}")
 
-if not DISCORD_WEBHOOK_URL:
+# Versuchen wir, die Variable aus der Umgebung direkt zu lesen
+try:
+    raw_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL', '')
+    logging.info(f"Direkt aus os.environ: DISCORD_WEBHOOK_URL ist {'vorhanden' if raw_webhook_url else 'NICHT VORHANDEN'}")
+    if raw_webhook_url:
+        logging.info(f"Länge: {len(raw_webhook_url)} Zeichen")
+except Exception as e:
+    logging.error(f"Fehler beim direkten Zugriff auf os.environ: {e}")
+
+# Versuche aus verschiedenen Quellen die Variable zu laden
+webhook_urls = []
+if os.path.exists('.env'):
+    logging.info("Versuche .env-Datei zu laden")
+    try:
+        load_dotenv('.env')
+        env_webhook = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
+        if env_webhook:
+            webhook_urls.append(('dotenv', env_webhook))
+    except Exception as e:
+        logging.error(f"Fehler beim Laden der .env-Datei: {e}")
+
+if DISCORD_WEBHOOK_URL:
+    webhook_urls.append(('os.getenv', DISCORD_WEBHOOK_URL))
+
+if raw_webhook_url:
+    webhook_urls.append(('os.environ', raw_webhook_url))
+
+# Prüfe, ob ein gültiger Webhook gefunden wurde
+if not webhook_urls:
     raise ValueError("DISCORD_WEBHOOK_URL ist in der Umgebung nicht vorhanden (Kubernetes Secret). Bitte überprüfen Sie die Secret-Konfiguration.")
+
+# Verwende den ersten gefundenen Webhook
+source, DISCORD_WEBHOOK_URL = webhook_urls[0]
+logging.info(f"Verwende DISCORD_WEBHOOK_URL aus Quelle: {source}")
 
 if not MODEL_HUMOR_PATH1:
     raise ValueError("MODEL_HUMOR_PATH1 is missing in the .env file.")
