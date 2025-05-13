@@ -6,10 +6,20 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 from pathlib import Path
+import datetime
 
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# Startinformationen ausgeben
+logging.info("=" * 50)
+logging.info("Bazinga CVE Bot gestartet")
+logging.info(f"Aktuelle Zeit: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+logging.info("=" * 50)
 
 # Variables from the .env file
 DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
@@ -17,8 +27,13 @@ MODEL_HUMOR_PATH1 = os.getenv('MODEL_HUMOR_PATH1')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
+# Debug-Ausgabe der Umgebungsvariablen
+logging.info(f"Umgebungsvariablen in bazinga_cve_bot.py:")
+logging.info(f"DISCORD_WEBHOOK_URL ist {'gesetzt' if DISCORD_WEBHOOK_URL else 'NICHT GESETZT'}")
+logging.info(f"CURRENT_COMMIT_ID ist {CURRENT_COMMIT_ID}")
+
 if not DISCORD_WEBHOOK_URL:
-    raise ValueError("DISCORD_WEBHOOK_URL is missing in the environment (Kubernetes Secret).")
+    raise ValueError("DISCORD_WEBHOOK_URL ist in der Umgebung nicht vorhanden (Kubernetes Secret). Bitte überprüfen Sie die Secret-Konfiguration.")
 
 if not MODEL_HUMOR_PATH1:
     raise ValueError("MODEL_HUMOR_PATH1 is missing in the .env file.")

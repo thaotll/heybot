@@ -46,8 +46,23 @@ MODEL_HUMOR_PATH = os.getenv('MODEL_HUMOR_PATH')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
+# Debug-Ausgabe der Umgebungsvariablen
+logging.info(f"Umgebungsvariablen:")
+logging.info(f"DISCORD_WEBHOOK_URL ist {'gesetzt' if DISCORD_WEBHOOK_URL else 'NICHT GESETZT'}")
+logging.info(f"MODEL_HUMOR_PATH ist {'gesetzt' if MODEL_HUMOR_PATH else 'NICHT GESETZT'}")
+logging.info(f"DEEPSEEK_API_KEY ist {'gesetzt' if DEEPSEEK_API_KEY else 'NICHT GESETZT'}")
+logging.info(f"CURRENT_COMMIT_ID ist {CURRENT_COMMIT_ID}")
+
+# Ausgabe aller Umgebungsvariablen zur Fehlersuche
+logging.info("Alle Umgebungsvariablen:")
+for key, value in os.environ.items():
+    logging.info(f"{key}: {'*****' if 'KEY' in key or 'TOKEN' in key or 'SECRET' in key or 'URL' in key else value}")
+
 if not DISCORD_WEBHOOK_URL:
-    raise ValueError("DISCORD_WEBHOOK_URL is missing in the environment (Kubernetes Secret).")
+    raise ValueError("DISCORD_WEBHOOK_URL ist in der Umgebung nicht vorhanden (Kubernetes Secret). Bitte überprüfen Sie die Secret-Konfiguration.")
+
+if not CURRENT_COMMIT_ID or CURRENT_COMMIT_ID == 'latest':
+    logging.warning("CURRENT_COMMIT_ID ist nicht gesetzt oder hat den Wert 'latest'. Der Commit wird möglicherweise nicht korrekt identifiziert.")
 
 if not MODEL_HUMOR_PATH:
     logging.warning("MODEL_HUMOR_PATH ist nicht gesetzt. Standard-Humor-Template wird verwendet.")
