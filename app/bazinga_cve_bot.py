@@ -7,20 +7,9 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pathlib import Path
 
-# Expliziten Pfad für .env-Datei definieren
-ENV_FILE_PATH = Path(__file__).parent / ".env"
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
-
-# Load environment variables - prioritize .env file
-if ENV_FILE_PATH.exists():
-    logging.info(f"Lade Umgebungsvariablen aus lokaler .env-Datei: {ENV_FILE_PATH}")
-    load_dotenv(dotenv_path=ENV_FILE_PATH, override=True)
-else:
-    # Falls keine .env-Datei existiert, versuche die Standard-load_dotenv
-    logging.warning(f".env-Datei nicht gefunden unter: {ENV_FILE_PATH}")
-    load_dotenv()
 
 # Variables from the .env file
 DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
@@ -29,7 +18,7 @@ DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
 if not DISCORD_WEBHOOK_URL:
-    raise ValueError("DISCORD_WEBHOOK_URL is missing in the .env file.")
+    raise ValueError("DISCORD_WEBHOOK_URL is missing in the environment (Kubernetes Secret).")
 
 if not MODEL_HUMOR_PATH1:
     raise ValueError("MODEL_HUMOR_PATH1 is missing in the .env file.")

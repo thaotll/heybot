@@ -12,19 +12,18 @@ spec:
     metadata:
       labels:
         app: heybot
-      annotations:
-        commit-id: "6d8c15cca608ea8a840c330a64287ef26aa7b824"
     spec:
       containers:
         - name: heybot
-          image: ghcr.io/thaotll/heybot-with-trivy-output:6d8c15cca608ea8a840c330a64287ef26aa7b824
+          image: ghcr.io/thaotll/heybot-with-trivy-output:latest
           imagePullPolicy: Always
           command: ["/app/start.sh"]
           env:
             - name: CURRENT_COMMIT_ID
               valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['commit-id']
+                secretKeyRef:
+                  name: heybot-commit
+                  key: CURRENT_COMMIT_ID
           envFrom:
             - secretRef:
                 name: heybot-secrets
