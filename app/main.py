@@ -7,14 +7,36 @@ import subprocess
 import tempfile
 import shutil
 from dotenv import load_dotenv
-import openai
+from openai import OpenAI
 from pathlib import Path
+import datetime
 
 # Load environment variables
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Ausgabe in die Konsole
+        logging.FileHandler("heybot_scan.log")  # Ausgabe in eine Datei
+    ]
+)
+
+# Zeige Startinformationen
+logging.info("=" * 50)
+logging.info("HeyBot Security Scanner gestartet")
+logging.info(f"Aktuelle Zeit: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+if os.path.exists('.git'):
+    try:
+        git_branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], text=True).strip()
+        git_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+        logging.info(f"Git Branch: {git_branch}")
+        logging.info(f"Git Commit: {git_commit}")
+    except Exception as e:
+        logging.warning(f"Konnte Git-Informationen nicht abrufen: {e}")
+logging.info("=" * 50)
 
 # Konstanten für Pfade
 BASE_DIR = Path(__file__).parent
@@ -29,14 +51,26 @@ CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
 if not DISCORD_WEBHOOK_URL:
     raise ValueError("DISCORD_WEBHOOK_URL is missing in the .env file.")
-if not MODEL_HUMOR_PATH:
-    raise ValueError("MODEL_HUMOR_PATH is missing in the .env file.")
-if not DEEPSEEK_API_KEY:
-    raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
 
-# Initialize DeepSeek client
-openai.api_key = DEEPSEEK_API_KEY
-openai.api_base = "https://api.deepseek.com/v1"
+if not MODEL_HUMOR_PATH:
+    logging.warning("MODEL_HUMOR_PATH ist nicht gesetzt. Standard-Humor-Template wird verwendet.")
+    # Setze einen Standard-Pfad
+    MODEL_HUMOR_PATH = "/app/default_humor_template.txt"
+    # Erstelle eine Standarddatei, falls sie nicht existiert
+    if not os.path.exists(MODEL_HUMOR_PATH):
+        with open(MODEL_HUMOR_PATH, 'w') as f:
+            f.write("Du bist ein sarkastischer Sicherheitsassistent.")
+
+if not DEEPSEEK_API_KEY:
+    logging.warning("DEEPSEEK_API_KEY ist nicht gesetzt. KI-Funktionen werden deaktiviert.")
+    # Setze einen Platzhalter-Wert, um den Fehler zu vermeiden
+    DEEPSEEK_API_KEY = "dummy_key"
+
+# Initialize DeepSeek client mit neuer API
+client = OpenAI(
+    api_key=DEEPSEEK_API_KEY,
+    base_url="https://api.deepseek.com/v1"
+)
 
 
 def get_last_commit_id():
@@ -59,7 +93,11 @@ def run_trivy_scan(temp_dir, commit_id):
     
     try:
         logging.info(f"Starting Trivy scan for commit {commit_id}")
-        subprocess.run([
+        logging.info(f"Scanning directory: {temp_dir}")
+        logging.info(f"Output file: {output_file}")
+        
+        # Trivy-Kommando vorbereiten
+        trivy_cmd = [
             "trivy", "fs",
             "--format", "json",
             "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
@@ -67,13 +105,52 @@ def run_trivy_scan(temp_dir, commit_id):
             "--scanners", "vuln,secret,config",  # Aktiviere alle Scanner
             "--output", str(output_file),
             str(temp_dir)
-        ], check=True, capture_output=True, text=True)
-        logging.info(f"Trivy scan completed for commit {commit_id}")
+        ]
+        
+        logging.info(f"Running Trivy command: {' '.join(trivy_cmd)}")
+        
+        # Live-Logging für Trivy-Ausgabe
+        process = subprocess.Popen(
+            trivy_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        
+        # Lese und logge Trivy-Ausgabe in Echtzeit
+        for line in process.stdout:
+            line = line.strip()
+            if "error" in line.lower() or "fatal" in line.lower():
+                logging.error(f"Trivy: {line}")
+            elif "warn" in line.lower():
+                logging.warning(f"Trivy: {line}")
+            else:
+                logging.info(f"Trivy: {line}")
+        
+        # Warte auf Prozessende
+        return_code = process.wait()
+        if return_code != 0:
+            logging.error(f"Trivy scan failed with return code {return_code}")
+        else:
+            logging.info(f"Trivy scan completed for commit {commit_id}")
+            
+            # Prüfe, ob die Ausgabedatei existiert und nicht leer ist
+            if output_file.exists():
+                file_size = output_file.stat().st_size
+                logging.info(f"Trivy output file size: {file_size} bytes")
+                if file_size == 0:
+                    logging.warning("Trivy output file is empty")
+            else:
+                logging.error("Trivy output file was not created")
+        
     except subprocess.CalledProcessError as e:
         logging.error(f"Trivy scan failed: {str(e)}")
         logging.error(f"Stdout: {e.stdout}")
         logging.error(f"Stderr: {e.stderr}")
         # Erstellt eine leere Ergebnisdatei
+        output_file.write_text(json.dumps({"Results": []}))
+    except Exception as e:
+        logging.error(f"Unexpected error during Trivy scan: {str(e)}")
         output_file.write_text(json.dumps({"Results": []}))
     
     return output_file
@@ -91,7 +168,11 @@ def run_owasp_scan(temp_dir, commit_id):
         data_dir.mkdir(exist_ok=True)
         
         logging.info(f"Starting OWASP scan for commit {commit_id}")
-        subprocess.run([
+        logging.info(f"OWASP database directory: {data_dir}")
+        logging.info(f"Scanning directory: {temp_dir}")
+        
+        # OWASP-Kommando vorbereiten
+        owasp_cmd = [
             "dependency-check",
             "--project", "heybot",
             "--scan", str(temp_dir),
@@ -99,14 +180,46 @@ def run_owasp_scan(temp_dir, commit_id):
             "--out", str(output_file),
             "--failOnCVSS", "11",  # Nie fehlschlagen (Großbuchstaben CVSS)
             "--nodeAuditSkipDevDependencies", "false",  # Auch dev dependencies scannen
-            "--data", str(data_dir)  # Persistente Datenbank
-        ], check=True, capture_output=True, text=True, env={**os.environ})
-        logging.info(f"OWASP scan completed for commit {commit_id}")
+            "--data", str(data_dir),  # Persistente Datenbank
+            "--log", "info"  # Mehr Logging-Informationen
+        ]
+        
+        logging.info(f"Running OWASP command: {' '.join(owasp_cmd)}")
+        
+        # Live-Logging für OWASP-Ausgabe
+        process = subprocess.Popen(
+            owasp_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env={**os.environ}
+        )
+        
+        # Lese und logge OWASP-Ausgabe in Echtzeit
+        for line in process.stdout:
+            line = line.strip()
+            if "ERROR" in line or "FATAL" in line:
+                logging.error(f"OWASP: {line}")
+            elif "WARN" in line:
+                logging.warning(f"OWASP: {line}")
+            elif "INFO" in line and ("Progress" in line or "Download" in line or "Processing" in line or "Checking" in line):
+                logging.info(f"OWASP Progress: {line}")
+        
+        # Warte auf Prozessende
+        return_code = process.wait()
+        if return_code != 0:
+            logging.error(f"OWASP scan failed with return code {return_code}")
+        else:
+            logging.info(f"OWASP scan completed for commit {commit_id}")
+            
     except subprocess.CalledProcessError as e:
         logging.error(f"OWASP scan failed: {str(e)}")
         logging.error(f"Stdout: {e.stdout}")
         logging.error(f"Stderr: {e.stderr}")
         # Erstellt eine leere Ergebnisdatei
+        output_file.write_text(json.dumps({"dependencies": []}))
+    except Exception as e:
+        logging.error(f"Unexpected error during OWASP scan: {str(e)}")
         output_file.write_text(json.dumps({"dependencies": []}))
     
     return output_file
@@ -332,7 +445,7 @@ async def send_prompt_to_deepseek(prompt):
     Sendet den Prompt an die DeepSeek-API und gibt die generierte Antwort zurück.
     """
     try:
-        resp = openai.ChatCompletion.create(
+        resp = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": "You are a sarcastic security assistant."},

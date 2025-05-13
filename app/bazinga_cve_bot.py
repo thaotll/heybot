@@ -21,10 +21,17 @@ CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
 if not DISCORD_WEBHOOK_URL:
     raise ValueError("DISCORD_WEBHOOK_URL is missing in the .env file.")
+
 if not MODEL_HUMOR_PATH1:
-    raise ValueError("MODEL_HUMOR_PATH1 is missing in the .env file.")
+    logging.warning("MODEL_HUMOR_PATH1 ist nicht gesetzt. Standard-Humor-Template wird verwendet.")
+    # Setze einen Standard-Pfad
+    MODEL_HUMOR_PATH1 = "/app/default_humor_template.txt"
+    # Erstelle eine Standarddatei, falls sie nicht existiert
+    if not os.path.exists(MODEL_HUMOR_PATH1):
+        with open(MODEL_HUMOR_PATH1, 'w') as f:
+            f.write("You are Sheldon Cooper from Big Bang Theory...")
+
 if not DEEPSEEK_API_KEY:
-    raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
 
 # Initialize OpenAI client
 client = OpenAI(
@@ -139,11 +146,16 @@ def save_message_to_file(msg):
 
 
 async def send_discord(msg):
+    """
+    Sendet eine Nachricht an den Discord-Webhook.
+    """
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(DISCORD_WEBHOOK_URL, json={"content": msg}) as response:
                 if response.status != 204:
                     logging.warning(f"Discord returned status: {response.status}")
+                else:
+                    logging.info("Message sent to Discord successfully")
     except Exception as e:
         logging.error(f"Error sending Discord message: {e}")
 

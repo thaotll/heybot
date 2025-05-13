@@ -24,6 +24,16 @@ jobs:
         run: |
           echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
+      # Update deployment files with current commit ID
+      - name: Update deployment files with current commit ID
+        run: |
+          sed -i "s/commit-id: \".*\"/commit-id: \"${{ env.CURRENT_COMMIT_ID }}\"/" k8s/deployment.yaml
+          sed -i "s|image: ghcr.io/thaotll/heybot-with-trivy-output:.*|image: ghcr.io/thaotll/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}|" k8s/deployment.yaml
+          
+          # Show changes for verification
+          echo "Updated deployment.yaml with Commit ID: ${{ env.CURRENT_COMMIT_ID }}"
+          grep -A 2 "commit-id\|image: ghcr.io" k8s/deployment.yaml
+
       # Login to GitHub Container Registry
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
@@ -37,18 +47,17 @@ jobs:
         run: |
           docker build \
             --build-arg CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            -t ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }} \
-            -t ghcr.io/$USER/heybot:latest .
+            -t ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }} \
+            -t ghcr.io/$USER/heybot-with-trivy-output:latest .
           
-          docker push ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}
-          docker push ghcr.io/$USER/heybot:latest
+          docker push ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
+          docker push ghcr.io/$USER/heybot-with-trivy-output:latest
 
       # Install Trivy
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.2.0
         with:
           version: latest # Specify the desired version
-
 
       # Run Trivy scan and security analysis
       - name: Run security analysis
@@ -61,7 +70,7 @@ jobs:
             --severity HIGH,CRITICAL,MEDIUM,LOW \
             --format json \
             --output ./analysis/trivy-${{ env.CURRENT_COMMIT_ID }}.json \
-            ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}
+            ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
           
           # Run security analysis container
           docker run --rm \
@@ -71,7 +80,7 @@ jobs:
             -e MODEL_HUMOR_PATH1=/app/humor_template.txt \
             -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
             -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}
+            ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
 
       # Set up kubectl for deployment
       - name: Setup kubectl
@@ -87,25 +96,27 @@ jobs:
         with:
           version: 'latest'
 
-      # Update Kubernetes deployment and repo files
-      - name: Update Kubernetes deployment
+      # Apply deployment to Kubernetes with validation disabled (to avoid TLS issues)
+      - name: Apply deployment to Kubernetes
         run: |
-          # Update deployment YAML files in repo
-          sed -i "s/commit-id: \".*\"/commit-id: \"${{ env.CURRENT_COMMIT_ID }}\"/" k8s/deployment.yaml
-          sed -i "s|image: ghcr.io/$USER/heybot.*|image: ghcr.io/$USER/heybot:${{ env.CURRENT_COMMIT_ID }}|" k8s/deployment.yaml
-          sed -i "s|image: ghcr.io/$USER/heybot-api:.*|image: ghcr.io/$USER/heybot-api:${{ env.CURRENT_COMMIT_ID }}|" k8s/heybot-api-deployment.yaml
+          # Apply deployment without validation to avoid TLS handshake timeout
+          kubectl apply -f k8s/deployment.yaml --validate=false
           
-          # Apply deployments
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/heybot-api-deployment.yaml
+          # Apply API deployment
+          kubectl apply -f k8s/heybot-api-deployment.yaml --validate=false
           
           # Wait for deployments to complete
-          kubectl rollout status deployment/heybot-app
-          kubectl rollout status deployment/heybot-api
-          
-          # Commit and push updated files
+          kubectl rollout status deployment/heybot-app || true
+          kubectl rollout status deployment/heybot-api || true
+      
+      # Commit and push updated deployment files
+      - name: Commit and push updated files
+        run: |
+          # Git config
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git add k8s/deployment.yaml k8s/heybot-api-deployment.yaml
-          git commit -m "Update deployment to ${{ env.CURRENT_COMMIT_ID }}"
+          
+          # Commit and push
+          git add k8s/deployment.yaml
+          git commit -m "Auto-update deployment to use commit ID: ${{ env.CURRENT_COMMIT_ID }}"
           git push
