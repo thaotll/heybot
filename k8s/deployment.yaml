@@ -10,12 +10,14 @@ spec:
       app: heybot
   template:
     metadata:
+      annotations:
+        commit-id: e3e44989b857b40d9aee9f6e0cf07b1f88844a54
       labels:
         app: heybot
     spec:
       containers:
         - name: heybot
-          image: ghcr.io/thaotll/heybot-with-trivy-output:latest
+          image: ghcr.io/thaotll/heybot-with-trivy-output:e3e44989b857b40d9aee9f6e0cf07b1f88844a54
           imagePullPolicy: Always
           command: ["/app/start.sh"]
           env:
@@ -27,6 +29,8 @@ spec:
           envFrom:
             - secretRef:
                 name: heybot-secrets
+            - secretRef:
+                name: heybot-commit
           volumeMounts:
             - name: analysis-volume
               mountPath: /app/analysis

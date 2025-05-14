@@ -1,4 +1,4 @@
-name: Docker Image Scan and Deploy
+name: Build, Scan & Deploy Heybot
 
 on: [push]
 
@@ -21,13 +21,11 @@ jobs:
       # Get current commit ID
       - name: Get current commit ID
         id: get_commit_id
-        run: |
-          echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
+        run: echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
       # Update deployment files with current commit ID
       - name: Update deployment files with current commit ID
         run: |
-          sed -i "s/commit-id: \".*\"/commit-id: \"${{ env.CURRENT_COMMIT_ID }}\"/" k8s/deployment.yaml
           sed -i "s|image: ghcr.io/thaotll/heybot-with-trivy-output:.*|image: ghcr.io/thaotll/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}|" k8s/deployment.yaml
           
           # Show changes for verification
@@ -39,8 +37,8 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}  # Use the GitHub username (actor)
-          password: ${{ secrets.GHCR_TOKEN }}  # Use the secret token
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
       # Build and push the Docker image with current commit ID
       - name: Build and push Docker image
@@ -53,34 +51,15 @@ jobs:
           docker push ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
           docker push ghcr.io/$USER/heybot-with-trivy-output:latest
 
-      # Install Trivy
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
-        with:
-          version: latest # Specify the desired version
-
-      # Run Trivy scan and security analysis
-      - name: Run security analysis
-        run: |
-          # Create analysis directory
-          mkdir -p ./analysis
-          
-          # Run Trivy scan
-          trivy image \
-            --severity HIGH,CRITICAL,MEDIUM,LOW \
-            --format json \
-            --output ./analysis/trivy-${{ env.CURRENT_COMMIT_ID }}.json \
-            ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
-          
           # Run security analysis container
           docker run --rm \
             -v $(pwd)/analysis:/app/analysis \
             -e DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
-            -e MODEL_HUMOR_PATH=/app/humor_template.txt \
-            -e MODEL_HUMOR_PATH1=/app/humor_template.txt \
+            -e MODEL_HUMOR_PATH=/app/model_humor.txt \
+            -e MODEL_HUMOR_PATH1=/app/model_humor_sheldon.txt \
             -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
             -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
+            ghcr.io/${{ env.USER }}/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
 
       # Set up kubectl for deployment
       - name: Setup kubectl
@@ -94,10 +73,14 @@ jobs:
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: 'latest'
+          version: latest
 
-      # Apply deployment to Kubernetes with validation disabled (to avoid TLS issues)
-      - name: Apply deployment to Kubernetes
+      - name: Create/update commit-id secret
+        run: |
+          kubectl delete secret heybot-commit --ignore-not-found
+          kubectl create secret generic heybot-commit --from-literal=CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }}
+
+      - name: Apply Kubernetes deployment
         run: |
           # Apply deployment without validation to avoid TLS handshake timeout
           kubectl apply -f k8s/deployment.yaml --validate=false
@@ -118,5 +101,5 @@ jobs:
           
           # Commit and push
           git add k8s/deployment.yaml
-          git commit -m "Auto-update deployment to use commit ID: ${{ env.CURRENT_COMMIT_ID }}"
-          git push
+          git commit -m "Auto-update image to ${{ env.CURRENT_COMMIT_ID }}"
+          git push || echo "Nothing to commit"

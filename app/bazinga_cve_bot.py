@@ -1,12 +1,15 @@
-import logging
-import json
-import asyncio
-import aiohttp
 import os
-from dotenv import load_dotenv
-from openai import OpenAI
-from pathlib import Path
+import json
+import logging
+import asyncio
+import subprocess
+import tempfile
+import shutil
 import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
 
 
 # Configure logging
@@ -21,68 +24,32 @@ logging.info("Bazinga CVE Bot gestartet")
 logging.info(f"Aktuelle Zeit: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 logging.info("=" * 50)
 
+# Konstanten für Pfade
+BASE_DIR = Path(__file__).parent
+ANALYSIS_DIR = BASE_DIR / "analysis"
+ANALYSIS_DIR.mkdir(exist_ok=True)
+
 # Variables from the .env file
 DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
 MODEL_HUMOR_PATH1 = os.getenv('MODEL_HUMOR_PATH1')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
-# Debug-Ausgabe der Umgebungsvariablen
-logging.info(f"Umgebungsvariablen in bazinga_cve_bot.py:")
+# Logging der Umgebungsvariablen
 logging.info(f"DISCORD_WEBHOOK_URL ist {'gesetzt' if DISCORD_WEBHOOK_URL else 'NICHT GESETZT'}")
-logging.info(f"DISCORD_WEBHOOK_URL Länge: {len(DISCORD_WEBHOOK_URL)} Zeichen")
-if DISCORD_WEBHOOK_URL:
-    logging.info(f"DISCORD_WEBHOOK_URL erste 10 Zeichen: {DISCORD_WEBHOOK_URL[:10]}")
 logging.info(f"CURRENT_COMMIT_ID ist {CURRENT_COMMIT_ID}")
 
-# Versuchen wir, die Variable aus der Umgebung direkt zu lesen
-try:
-    raw_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL', '')
-    logging.info(f"Direkt aus os.environ: DISCORD_WEBHOOK_URL ist {'vorhanden' if raw_webhook_url else 'NICHT VORHANDEN'}")
-    if raw_webhook_url:
-        logging.info(f"Länge: {len(raw_webhook_url)} Zeichen")
-except Exception as e:
-    logging.error(f"Fehler beim direkten Zugriff auf os.environ: {e}")
-
-# Versuche aus verschiedenen Quellen die Variable zu laden
-webhook_urls = []
-if os.path.exists('.env'):
-    logging.info("Versuche .env-Datei zu laden")
-    try:
-        load_dotenv('.env')
-        env_webhook = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
-        if env_webhook:
-            webhook_urls.append(('dotenv', env_webhook))
-    except Exception as e:
-        logging.error(f"Fehler beim Laden der .env-Datei: {e}")
-
-if DISCORD_WEBHOOK_URL:
-    webhook_urls.append(('os.getenv', DISCORD_WEBHOOK_URL))
-
-if raw_webhook_url:
-    webhook_urls.append(('os.environ', raw_webhook_url))
-
-# Prüfe, ob ein gültiger Webhook gefunden wurde
-if not webhook_urls:
-    raise ValueError("DISCORD_WEBHOOK_URL ist in der Umgebung nicht vorhanden (Kubernetes Secret). Bitte überprüfen Sie die Secret-Konfiguration.")
-
-# Verwende den ersten gefundenen Webhook
-source, DISCORD_WEBHOOK_URL = webhook_urls[0]
-logging.info(f"Verwende DISCORD_WEBHOOK_URL aus Quelle: {source}")
-
+# DeepSeek-Konfiguration prüfen
 if not MODEL_HUMOR_PATH1:
-    raise ValueError("MODEL_HUMOR_PATH1 is missing in the .env file.")
-
+    raise ValueError("MODEL_HUMOR_PATH1 is missing.")
 if not DEEPSEEK_API_KEY:
-    raise ValueError("DEEPSEEK_API_KEY is missing in the .env file.")
+    raise ValueError("DEEPSEEK_API_KEY is missing.")
 
-# Initialize OpenAI client
-client = OpenAI(
+client = AsyncOpenAI(
     api_key=DEEPSEEK_API_KEY,
     base_url="https://api.deepseek.com"
 )
 
-# Severity ranking for sorting
 SEVERITY_ORDER = {
     "CRITICAL": 0,
     "HIGH": 1,
@@ -91,29 +58,32 @@ SEVERITY_ORDER = {
     "UNKNOWN": 4
 }
 
-
 def load_humor_template():
     """Load the Sheldon Cooper-style humor template"""
     try:
         return Path(MODEL_HUMOR_PATH1).read_text(encoding="utf-8").strip()
     except Exception as e:
-        logging.error(f"Failed to load humor template: {e}")
+        logging.error(f"Fehler beim Laden des Humor-Templates: {e}")
         return "You are Sheldon Cooper..."
-
 
 def load_trivy_logs():
     try:
         path = Path(f"analysis/trivy-{CURRENT_COMMIT_ID}.json")
+        if not path.exists():
+            logging.warning(f"{path.name} existiert nicht")
+            return []
         data = json.loads(path.read_text(encoding="utf-8"))
         return [v for r in data.get("Results", []) for v in r.get("Vulnerabilities", [])]
     except Exception as e:
-        logging.error(f"Failed to load Trivy logs: {e}")
+        logging.error(f"Fehler beim Laden der Trivy-Daten: {e}")
         return []
-
 
 def load_owasp_logs():
     try:
         path = Path(f"analysis/owasp-{CURRENT_COMMIT_ID}.json")
+        if not path.exists():
+            logging.warning(f"{path.name} existiert nicht")
+            return []
         data = json.loads(path.read_text(encoding="utf-8"))
         vulns = []
         for dep in data.get("dependencies", []):
@@ -122,12 +92,29 @@ def load_owasp_logs():
                 vulns.append(v)
         return vulns
     except Exception as e:
-        logging.error(f"Failed to load OWASP logs: {e}")
+        logging.error(f"Fehler beim Laden der OWASP-Daten: {e}")
         return []
-
 
 def sort_vulns(vulns):
     return sorted(vulns, key=lambda x: SEVERITY_ORDER.get(x.get("Severity", "UNKNOWN").upper(), 99))
+
+async def send_prompt_to_deepseek(prompt):
+    try:
+        response = await client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "You are a sarcastic security assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=1.0
+        )
+        message = response.choices[0].message.content
+        if not message or not isinstance(message, str):
+            return "DeepSeek returned no valid response. Even Sheldon is confused. 🔍"
+        return message if "Bazinga" in message else message + "\nBazinga! ⚛️"
+    except Exception as e:
+        logging.error(f"Exception bei DeepSeek: {e}")
+        return "Fehler bei der API-Anfrage an DeepSeek."
 
 
 async def generate_report(vulns, template):
@@ -167,26 +154,20 @@ Vulnerabilities (first 5 by severity):
 - Patch CRITICAL issues immediately with `apt upgrade`.
 - Restrict untrusted inputs for HIGH-severity unfixable issues.
 """
-    try:
-        resp = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.9
-        )
-        text = resp.choices[0].message.content
-        return text if "Bazinga" in text else text + "\nBazinga! ⚛️"
-    except Exception as e:
-        logging.error(f"DeepSeek error: {e}")
-        return "Couldn't generate report. Even Sheldon couldn't fix this. 🔥"
 
+    response = await send_prompt_to_deepseek(prompt)
+    if not response or not isinstance(response, str):
+        return "DeepSeek returned no valid response. Even Sheldon is confused. 🔍"
+    return response if "Bazinga" in response else response + "\nBazinga! ⚛️"
 
 def save_message_to_file(msg):
     try:
-        Path(__file__).parent.joinpath("bazinga_message.txt").write_text(msg, encoding="utf-8")
+        path = Path("bazinga_message.txt")
+        path.write_text(msg, encoding="utf-8")
         logging.info("Bazinga message saved.")
+        logging.info(f"Bazinga-Nachricht gespeichert unter: {path.absolute()}")
     except Exception as e:
-        logging.error(f"Failed to save Bazinga message: {e}")
-
+        logging.error(f"Speichern der Bazinga-Nachricht fehlgeschlagen: {e}")
 
 async def send_discord(msg):
     """
@@ -198,10 +179,9 @@ async def send_discord(msg):
                 if response.status != 204:
                     logging.warning(f"Discord returned status: {response.status}")
                 else:
-                    logging.info("Message sent to Discord successfully")
+                    logging.info("Discord-Nachricht erfolgreich gesendet.")
     except Exception as e:
-        logging.error(f"Error sending Discord message: {e}")
-
+        logging.error(f"Fehler beim Senden an Discord: {e}")
 
 async def main():
     trivy = load_trivy_logs()
@@ -214,7 +194,6 @@ async def main():
     save_message_to_file(report)
     await send_discord(report)
     logging.info("Bazinga report sent.")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

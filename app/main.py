@@ -1,24 +1,21 @@
-import logging
-import json
-import asyncio
-import aiohttp
 import os
+import json
+import logging
+import asyncio
 import subprocess
 import tempfile
 import shutil
-from dotenv import load_dotenv
-from openai import OpenAI
-from pathlib import Path
 import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
+
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),  # Ausgabe in die Konsole
-        logging.FileHandler("heybot_scan.log")  # Ausgabe in eine Datei
-    ]
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
 # Zeige Startinformationen
@@ -46,80 +43,20 @@ MODEL_HUMOR_PATH = os.getenv('MODEL_HUMOR_PATH')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
-# Debug-Ausgabe der Umgebungsvariablen
-logging.info(f"Umgebungsvariablen:")
+# Logging der Umgebungsvariablen
 logging.info(f"DISCORD_WEBHOOK_URL ist {'gesetzt' if DISCORD_WEBHOOK_URL else 'NICHT GESETZT'}")
-logging.info(f"DISCORD_WEBHOOK_URL Länge: {len(DISCORD_WEBHOOK_URL)} Zeichen")
-if DISCORD_WEBHOOK_URL:
-    logging.info(f"DISCORD_WEBHOOK_URL erste 10 Zeichen: {DISCORD_WEBHOOK_URL[:10]}")
-    logging.info(f"DISCORD_WEBHOOK_URL letzte 10 Zeichen: {DISCORD_WEBHOOK_URL[-10:] if len(DISCORD_WEBHOOK_URL) >= 10 else DISCORD_WEBHOOK_URL}")
-logging.info(f"MODEL_HUMOR_PATH ist {'gesetzt' if MODEL_HUMOR_PATH else 'NICHT GESETZT'}")
-logging.info(f"DEEPSEEK_API_KEY ist {'gesetzt' if DEEPSEEK_API_KEY else 'NICHT GESETZT'}")
 logging.info(f"CURRENT_COMMIT_ID ist {CURRENT_COMMIT_ID}")
 
-# Versuchen wir, die Variable aus der Umgebung direkt zu lesen
-try:
-    raw_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL', '')
-    logging.info(f"Direkt aus os.environ: DISCORD_WEBHOOK_URL ist {'vorhanden' if raw_webhook_url else 'NICHT VORHANDEN'}")
-    if raw_webhook_url:
-        logging.info(f"Länge: {len(raw_webhook_url)} Zeichen")
-except Exception as e:
-    logging.error(f"Fehler beim direkten Zugriff auf os.environ: {e}")
-
-# Ausgabe aller Umgebungsvariablen zur Fehlersuche
-logging.info("Alle Umgebungsvariablen:")
-for key, value in os.environ.items():
-    logging.info(f"{key}: {'*****' if 'KEY' in key or 'TOKEN' in key or 'SECRET' in key or 'URL' in key else value}")
-
-# Versuche aus verschiedenen Quellen die Variable zu laden
-webhook_urls = []
-if os.path.exists('.env'):
-    logging.info("Versuche .env-Datei zu laden")
-    try:
-        load_dotenv('.env')
-        env_webhook = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
-        if env_webhook:
-            webhook_urls.append(('dotenv', env_webhook))
-    except Exception as e:
-        logging.error(f"Fehler beim Laden der .env-Datei: {e}")
-
-if DISCORD_WEBHOOK_URL:
-    webhook_urls.append(('os.getenv', DISCORD_WEBHOOK_URL))
-
-if raw_webhook_url:
-    webhook_urls.append(('os.environ', raw_webhook_url))
-
-# Prüfe, ob ein gültiger Webhook gefunden wurde
-if not webhook_urls:
-    raise ValueError("DISCORD_WEBHOOK_URL ist in der Umgebung nicht vorhanden (Kubernetes Secret). Bitte überprüfen Sie die Secret-Konfiguration.")
-
-# Verwende den ersten gefundenen Webhook
-source, DISCORD_WEBHOOK_URL = webhook_urls[0]
-logging.info(f"Verwende DISCORD_WEBHOOK_URL aus Quelle: {source}")
-
-if not CURRENT_COMMIT_ID or CURRENT_COMMIT_ID == 'latest':
-    logging.warning("CURRENT_COMMIT_ID ist nicht gesetzt oder hat den Wert 'latest'. Der Commit wird möglicherweise nicht korrekt identifiziert.")
-
+# DeepSeek-Konfiguration prüfen
 if not MODEL_HUMOR_PATH:
-    logging.warning("MODEL_HUMOR_PATH ist nicht gesetzt. Standard-Humor-Template wird verwendet.")
-    # Setze einen Standard-Pfad
-    MODEL_HUMOR_PATH = "/app/default_humor_template.txt"
-    # Erstelle eine Standarddatei, falls sie nicht existiert
-    if not os.path.exists(MODEL_HUMOR_PATH):
-        with open(MODEL_HUMOR_PATH, 'w') as f:
-            f.write("Du bist ein sarkastischer Sicherheitsassistent.")
-
+    raise ValueError("MODEL_HUMOR_PATH is missing.")
 if not DEEPSEEK_API_KEY:
-    logging.warning("DEEPSEEK_API_KEY ist nicht gesetzt. KI-Funktionen werden deaktiviert.")
-    # Setze einen Platzhalter-Wert, um den Fehler zu vermeiden
-    DEEPSEEK_API_KEY = "dummy_key"
+    raise ValueError("DEEPSEEK_API_KEY is missing.")
 
-# Initialize DeepSeek client mit neuer API
-client = OpenAI(
+client = AsyncOpenAI(
     api_key=DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com/v1"
+    base_url="https://api.deepseek.com"
 )
-
 
 def get_last_commit_id():
     """Liest die letzte Commit-ID aus der Datei."""
@@ -259,6 +196,31 @@ def run_owasp_scan(temp_dir, commit_id):
             logging.error(f"OWASP scan failed with return code {return_code}")
         else:
             logging.info(f"OWASP scan completed for commit {commit_id}")
+
+            # Stelle sicher, dass die Datei unter dem erwarteten Namen existiert
+            # Manchmal benennt dependency-check die Datei anders als mit --out angegeben,
+            # z.B. "dependency-check-report.json" oder ähnlich im Output-Verzeichnis.
+            # Wir gehen hier davon aus, dass ANALYSIS_DIR das Ausgabeverzeichnis ist
+            # und versuchen, die Standard-JSON-Datei zu finden und umzubenennen, falls
+            # unsere Zieldatei nicht direkt erstellt wurde.
+            # Dieser Teil ist spekulativ und muss ggf. an den tatsächlichen Output von dependency-check angepasst werden.
+            # Für den Moment versuchen wir, den Fall abzufangen, dass es einfach `dependency-check.json` heißt.
+            # Basierend auf älteren Logs könnte es auch `dependency-check-[commit_id].json` sein.
+            
+            # Versuche zuerst den spezifischen Namen, den das Tool manchmal verwendet
+            alternative_filename_pattern = f"dependency-check-{commit_id}.json"
+            alternative_file_path = ANALYSIS_DIR / alternative_filename_pattern
+            default_dc_json = ANALYSIS_DIR / "dependency-check.json" # Fallback, falls kein Commit-ID im Namen
+
+            if not output_file.exists():
+                if alternative_file_path.exists():
+                    logging.info(f"Renaming {alternative_file_path} to {output_file}")
+                    shutil.move(str(alternative_file_path), str(output_file))
+                elif default_dc_json.exists():
+                    logging.info(f"Renaming {default_dc_json} to {output_file}")
+                    shutil.move(str(default_dc_json), str(output_file))
+                else:
+                    logging.warning(f"Expected OWASP output file {output_file} not found, and no known alternatives detected.")
             
     except subprocess.CalledProcessError as e:
         logging.error(f"OWASP scan failed: {str(e)}")
@@ -489,11 +451,8 @@ def save_message_to_file(message: str):
 
 
 async def send_prompt_to_deepseek(prompt):
-    """
-    Sendet den Prompt an die DeepSeek-API und gibt die generierte Antwort zurück.
-    """
     try:
-        resp = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": "You are a sarcastic security assistant."},
@@ -501,9 +460,12 @@ async def send_prompt_to_deepseek(prompt):
             ],
             temperature=1.0
         )
-        return resp.choices[0].message.content
+        message = response.choices[0].message.content
+        if not message or not isinstance(message, str):
+            return "DeepSeek returned no valid response. Even Sheldon is confused. 🔍"
+        return message if "Bazinga" in message else message + "\nBazinga! ⚛️"
     except Exception as e:
-        logging.error(f"Error calling DeepSeek API: {e}")
+        logging.error(f"Exception bei DeepSeek: {e}")
         return "Fehler bei der API-Anfrage an DeepSeek."
 
 
