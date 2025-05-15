@@ -4,7 +4,6 @@ on: [push]
 
 env:
   USER: "thaotll"
-  KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
 
 jobs:
   build_scan_deploy:
@@ -22,15 +21,6 @@ jobs:
       - name: Get current commit ID
         id: get_commit_id
         run: echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
-      # Update deployment files with current commit ID
-      - name: Update deployment files with current commit ID
-        run: |
-          sed -i "s|image: ghcr.io/thaotll/heybot-with-trivy-output:.*|image: ghcr.io/thaotll/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}|" k8s/deployment.yaml
-          
-          # Show changes for verification
-          echo "Updated deployment.yaml with Commit ID: ${{ env.CURRENT_COMMIT_ID }}"
-          grep -A 2 "commit-id\|image: ghcr.io" k8s/deployment.yaml
 
       # Login to GitHub Container Registry
       - name: Login to GitHub Container Registry
@@ -60,46 +50,3 @@ jobs:
             -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
             -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
             ghcr.io/${{ env.USER }}/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
-
-      # Set up kubectl for deployment
-      - name: Setup kubectl
-        run: |
-          mkdir -p $HOME/.kube
-          echo "${KUBECONFIG_BASE64}" | base64 -d > $HOME/.kube/config
-        env:
-          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
-      
-      # Install kubectl
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: latest
-
-      - name: Create/update commit-id secret
-        run: |
-          kubectl delete secret heybot-commit --ignore-not-found
-          kubectl create secret generic heybot-commit --from-literal=CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }}
-
-      - name: Apply Kubernetes deployment
-        run: |
-          # Apply deployment without validation to avoid TLS handshake timeout
-          kubectl apply -f k8s/deployment.yaml --validate=false
-          
-          # Apply API deployment
-          kubectl apply -f k8s/heybot-api-deployment.yaml --validate=false
-          
-          # Wait for deployments to complete
-          kubectl rollout status deployment/heybot-app || true
-          kubectl rollout status deployment/heybot-api || true
-      
-      # Commit and push updated deployment files
-      - name: Commit and push updated files
-        run: |
-          # Git config
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-          
-          # Commit and push
-          git add k8s/deployment.yaml
-          git commit -m "Auto-update image to ${{ env.CURRENT_COMMIT_ID }}"
-          git push || echo "Nothing to commit"
