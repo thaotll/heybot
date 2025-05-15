@@ -8,6 +8,7 @@ import shutil
 import datetime
 from pathlib import Path
 
+import aiohttp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
@@ -113,9 +114,8 @@ async def send_prompt_to_deepseek(prompt):
             return "DeepSeek returned no valid response. Even Sheldon is confused. 🔍"
         return message if "Bazinga" in message else message + "\nBazinga! ⚛️"
     except Exception as e:
-        logging.error(f"Exception bei DeepSeek: {e}")
-        return "Fehler bei der API-Anfrage an DeepSeek."
-
+        logging.error(f"DeepSeek-Exception: {e}")
+        return "Fehler bei der Kommunikation mit DeepSeek."
 
 async def generate_report(vulns, template):
     if not vulns:

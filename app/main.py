@@ -8,6 +8,7 @@ import shutil
 import datetime
 from pathlib import Path
 
+import aiohttp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
@@ -43,7 +44,8 @@ MODEL_HUMOR_PATH = os.getenv('MODEL_HUMOR_PATH')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
 
-# Logging der Umgebungsvariablen
+# Debug-Ausgabe der Umgebungsvariablen
+logging.info(f"Umgebungsvariablen:")
 logging.info(f"DISCORD_WEBHOOK_URL ist {'gesetzt' if DISCORD_WEBHOOK_URL else 'NICHT GESETZT'}")
 logging.info(f"CURRENT_COMMIT_ID ist {CURRENT_COMMIT_ID}")
 
@@ -197,17 +199,10 @@ def run_owasp_scan(temp_dir, commit_id):
         else:
             logging.info(f"OWASP scan completed for commit {commit_id}")
 
-            # Stelle sicher, dass die Datei unter dem erwarteten Namen existiert
-            # Manchmal benennt dependency-check die Datei anders als mit --out angegeben,
-            # z.B. "dependency-check-report.json" oder ähnlich im Output-Verzeichnis.
-            # Wir gehen hier davon aus, dass ANALYSIS_DIR das Ausgabeverzeichnis ist
-            # und versuchen, die Standard-JSON-Datei zu finden und umzubenennen, falls
-            # unsere Zieldatei nicht direkt erstellt wurde.
-            # Dieser Teil ist spekulativ und muss ggf. an den tatsächlichen Output von dependency-check angepasst werden.
-            # Für den Moment versuchen wir, den Fall abzufangen, dass es einfach `dependency-check.json` heißt.
-            # Basierend auf älteren Logs könnte es auch `dependency-check-[commit_id].json` sein.
-            
-            # Versuche zuerst den spezifischen Namen, den das Tool manchmal verwendet
+            # Prüfen, ob die Zieldatei existiert. Falls nicht, alternative Standardnamen versuchen,
+            # wie sie von dependency-check häufig verwendet werden (z. B. dependency-check.json oder
+            # dependency-check-[commit_id].json). Falls gefunden, wird die Datei umbenannt.
+
             alternative_filename_pattern = f"dependency-check-{commit_id}.json"
             alternative_file_path = ANALYSIS_DIR / alternative_filename_pattern
             default_dc_json = ANALYSIS_DIR / "dependency-check.json" # Fallback, falls kein Commit-ID im Namen
