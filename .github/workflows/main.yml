@@ -67,10 +67,10 @@ jobs:
 
           # Helm templates into its standard subdirectory structure within K8S_MANIFEST_PATH
           # e.g. k8s/heybot/templates/
-          helm template ${{ env.HELM_RELEASE_NAME }} ./${{ env.HELM_CHART_PATH }} \\
-            --set image.tag=${{ env.CURRENT_COMMIT_ID }} \\
-            --set image.repository=ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }} \\
-            --output-dir ${{ env.K8S_MANIFEST_PATH }} 
+          helm template ${{ env.HELM_RELEASE_NAME }} ./${{ env.HELM_CHART_PATH }} \
+            --set image.tag=${{ env.CURRENT_COMMIT_ID }} \
+            --set image.repository=ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }} \
+            --output-dir ${{ env.K8S_MANIFEST_PATH }}
             
           # Define the source path of the templated files
           TEMPLATED_FILES_SOURCE_PATH="${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/templates"
