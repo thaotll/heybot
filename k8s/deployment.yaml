@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/version: "1.16.0"
     app.kubernetes.io/managed-by: Helm
 spec:
-  replicas: 1
+  replicas: 
   selector:
     matchLabels:
       app.kubernetes.io/name: heybot
@@ -28,17 +28,9 @@ spec:
       serviceAccountName: heybot
       containers:
         - name: heybot
-          image: "ghcr.io/thaotll/heybot-with-trivy-output:ffd2845682f78b102d62f52c32b9e200520442cb"
-          imagePullPolicy: IfNotPresent
+          image: "ghcr.io/thaotll/heybot-with-trivy-output:f4af61b5bd06b3b3fa197ebb23567e3da8e17d44"
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 80
               protocol: TCP
-          livenessProbe:
-            httpGet:
-              path: /
-              port: http
-          readinessProbe:
-            httpGet:
-              path: /
-              port: http
