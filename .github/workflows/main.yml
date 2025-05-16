@@ -64,6 +64,12 @@ jobs:
           rm -f ${{ env.K8S_MANIFEST_PATH }}/deployment.yaml
           rm -f ${{ env.K8S_MANIFEST_PATH }}/service.yaml
           rm -f ${{ env.K8S_MANIFEST_PATH }}/serviceaccount.yaml
+          # Add other specific files Helm might generate here if your chart evolves (e.g., ingress.yaml, hpa.yaml)
+          # rm -f ${{ env.K8S_MANIFEST_PATH }}/ingress.yaml
+          # rm -f ${{ env.K8S_MANIFEST_PATH }}/hpa.yaml
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/_helpers.tpl # Helm helper file
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/NOTES.txt    # Helm notes file
+          rm -rf ${{ env.K8S_MANIFEST_PATH }}/tests       # Helm tests directory
 
           # Helm templates into its standard subdirectory structure within K8S_MANIFEST_PATH
           # e.g. k8s/heybot/templates/
