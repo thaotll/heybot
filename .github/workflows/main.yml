@@ -54,22 +54,44 @@ jobs:
         run: |
           echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }}"
           
+          # Ensure base k8s manifest path exists
           mkdir -p ${{ env.K8S_MANIFEST_PATH }}
           
-          helm template ${{ env.HELM_RELEASE_NAME }} ./${{ env.HELM_CHART_PATH }} \
-            --set image.tag=${{ env.CURRENT_COMMIT_ID }} \
-            --set image.repository=ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }} \
-            --output-dir ${{ env.K8S_MANIFEST_PATH }}
+          # Remove specific files and directories in K8S_MANIFEST_PATH that Helm will manage/regenerate.
+          # This prevents the mv command from failing on non-empty directories like 'tests'
+          # and ensures old versions of Helm-managed files are removed, while keeping other YAMLs.
+          echo "Cleaning up previously Helm-generated files in ${{ env.K8S_MANIFEST_PATH }} that are managed by this chart"
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/deployment.yaml
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/service.yaml
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/serviceaccount.yaml
+
+          # Helm templates into its standard subdirectory structure within K8S_MANIFEST_PATH
+          # e.g. k8s/heybot/templates/
+          helm template ${{ env.HELM_RELEASE_NAME }} ./${{ env.HELM_CHART_PATH }} \\
+            --set image.tag=${{ env.CURRENT_COMMIT_ID }} \\
+            --set image.repository=ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }} \\
+            --output-dir ${{ env.K8S_MANIFEST_PATH }} 
             
-          if [ -d "${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/templates" ]; then
-            echo "Moving templated files to root of ${{ env.K8S_MANIFEST_PATH }}"
-            mv ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/templates/* ${{ env.K8S_MANIFEST_PATH }}/
-            rm -rf ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}
-          elif [ -d "${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}" ]; then
-            echo "Moving templated files from release subdir to root of ${{ env.K8S_MANIFEST_PATH }}"
-            mv ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/* ${{ env.K8S_MANIFEST_PATH }}/
-            rm -rf ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}
+          # Define the source path of the templated files
+          TEMPLATED_FILES_SOURCE_PATH="${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/templates"
+          ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH="${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}" # For Helm versions < 3.1 or certain structures
+
+          if [ -d "$TEMPLATED_FILES_SOURCE_PATH" ]; then
+            echo "Moving templated files from $TEMPLATED_FILES_SOURCE_PATH to ${{ env.K8S_MANIFEST_PATH }}"
+            # Move all contents, including subdirectories like 'tests'
+            mv $TEMPLATED_FILES_SOURCE_PATH/* ${{ env.K8S_MANIFEST_PATH }}/
+            # Remove the now-empty chart-name directory structure
+            rm -rf "${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}"
+          elif [ -d "$ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH" ]; then
+            echo "Moving templated files from $ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH to ${{ env.K8S_MANIFEST_PATH }}"
+            mv $ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH/* ${{ env.K8S_MANIFEST_PATH }}/
+            rm -rf "${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}"
+          else
+            echo "Error: Helm output directory not found as expected. Listing content of ${{ env.K8S_MANIFEST_PATH }} for debugging:"
+            ls -R ${{ env.K8S_MANIFEST_PATH }}
+            exit 1
           fi
+          
           echo "Generated manifests in ${{ env.K8S_MANIFEST_PATH }}:"
           ls -R ${{ env.K8S_MANIFEST_PATH }}
 
