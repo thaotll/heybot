@@ -1,42 +1,44 @@
+---
+# Source: heybot/templates/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: heybot-app
-  namespace: default
+  name: heybot
+  labels:
+    helm.sh/chart: heybot-0.1.0
+    app.kubernetes.io/name: heybot
+    app.kubernetes.io/instance: heybot
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: heybot
+      app.kubernetes.io/name: heybot
+      app.kubernetes.io/instance: heybot
   template:
     metadata:
-      annotations:
-        commit-id: e3e44989b857b40d9aee9f6e0cf07b1f88844a54
       labels:
-        app: heybot
+        helm.sh/chart: heybot-0.1.0
+        app.kubernetes.io/name: heybot
+        app.kubernetes.io/instance: heybot
+        app.kubernetes.io/version: "1.16.0"
+        app.kubernetes.io/managed-by: Helm
     spec:
+      serviceAccountName: heybot
       containers:
         - name: heybot
-          image: ghcr.io/thaotll/heybot-with-trivy-output:e3e44989b857b40d9aee9f6e0cf07b1f88844a54
-          imagePullPolicy: Always
-          command: ["/app/start.sh"]
-          env:
-            - name: CURRENT_COMMIT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: heybot-commit
-                  key: CURRENT_COMMIT_ID
-          envFrom:
-            - secretRef:
-                name: heybot-secrets
-            - secretRef:
-                name: heybot-commit
-          volumeMounts:
-            - name: analysis-volume
-              mountPath: /app/analysis
-      volumes:
-        - name: analysis-volume
-          persistentVolumeClaim:
-            claimName: analysis-pvc
-      imagePullSecrets:
-        - name: ghcr-secret
+          image: "ghcr.io/thaotll/heybot-with-trivy-output:bf6524a3076e9eb67f2fd1ef79101d6a85ccd3d1"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http

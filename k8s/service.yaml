@@ -1,0 +1,22 @@
+---
+# Source: heybot/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: heybot
+  labels:
+    helm.sh/chart: heybot-0.1.0
+    app.kubernetes.io/name: heybot
+    app.kubernetes.io/instance: heybot
+    app.kubernetes.io/version: "1.16.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: heybot
+    app.kubernetes.io/instance: heybot
