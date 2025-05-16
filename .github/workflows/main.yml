@@ -1,12 +1,16 @@
-name: Build, Scan & Deploy Heybot
+name: Build, Scan & Update Manifests for ArgoCD
 
 on: [push]
 
 env:
   USER: "thaotll"
+  IMAGE_NAME: "heybot-with-trivy-output"
+  HELM_CHART_PATH: "./helm/heybot"
+  HELM_RELEASE_NAME: "heybot"
+  K8S_MANIFEST_PATH: "k8s"
 
 jobs:
-  build_scan_deploy:
+  build_scan_and_update_manifests:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,13 +18,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
           fetch-depth: 0
         
       # Get current commit ID
       - name: Get current commit ID
         id: get_commit_id
         run: echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
 
       # Login to GitHub Container Registry
       - name: Login to GitHub Container Registry
@@ -35,18 +44,55 @@ jobs:
         run: |
           docker build \
             --build-arg CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            -t ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }} \
-            -t ghcr.io/$USER/heybot-with-trivy-output:latest .
+            -t ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} \
+            -t ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:latest .
           
-          docker push ghcr.io/$USER/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
-          docker push ghcr.io/$USER/heybot-with-trivy-output:latest
+          docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }}
+          docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:latest
 
-          # Run security analysis container
+      - name: Update Kubernetes Manifests with Helm
+        run: |
+          echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }}"
+          
+          mkdir -p ${{ env.K8S_MANIFEST_PATH }}
+          
+          helm template ${{ env.HELM_RELEASE_NAME }} ./${{ env.HELM_CHART_PATH }} \
+            --set image.tag=${{ env.CURRENT_COMMIT_ID }} \
+            --set image.repository=ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }} \
+            --output-dir ${{ env.K8S_MANIFEST_PATH }}
+            
+          if [ -d "${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/templates" ]; then
+            echo "Moving templated files to root of ${{ env.K8S_MANIFEST_PATH }}"
+            mv ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/templates/* ${{ env.K8S_MANIFEST_PATH }}/
+            rm -rf ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}
+          elif [ -d "${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}" ]; then
+            echo "Moving templated files from release subdir to root of ${{ env.K8S_MANIFEST_PATH }}"
+            mv ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/* ${{ env.K8S_MANIFEST_PATH }}/
+            rm -rf ${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}
+          fi
+          echo "Generated manifests in ${{ env.K8S_MANIFEST_PATH }}:"
+          ls -R ${{ env.K8S_MANIFEST_PATH }}
+
+      - name: Commit and push manifest changes
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions@github.com'
+          git add ${{ env.K8S_MANIFEST_PATH }}/*
+          
+          if ! git diff --staged --quiet; then
+            git commit -m "Update image to ${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} via Helm [skip ci]"
+            git push
+          else
+            echo "No manifest changes to commit."
+          fi
+
+      - name: Run security analysis container
+        run: |
+          mkdir -p $(pwd)/analysis 
           docker run --rm \
             -v $(pwd)/analysis:/app/analysis \
             -e DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
             -e MODEL_HUMOR_PATH=/app/model_humor.txt \
-            -e MODEL_HUMOR_PATH1=/app/model_humor_sheldon.txt \
             -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
             -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            ghcr.io/${{ env.USER }}/heybot-with-trivy-output:${{ env.CURRENT_COMMIT_ID }}
+            ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }}

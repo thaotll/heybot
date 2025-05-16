@@ -365,67 +365,172 @@ def save_analysis_json(trivy_data, owasp_data, commit_id):
     return result
 
 
-def extract_vulnerabilities_for_prompt(trivy_data, owasp_data, max_items=5):
+def extract_vulnerabilities_for_prompt(trivy_data, owasp_data, max_items=10):
     """
-    Extrahiert die wichtigsten Vulnerabilitäten für den Prompt.
+    Extrahiert detaillierte Informationen zu Schwachstellen für den Prompt.
+    Erweitert, um mehr Informationen für einen strukturierten Bericht zu liefern.
     """
-    trivy_logs = []
+    # Severities in der richtigen Reihenfolge für Sortierung
+    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
     
-    # Vulnerabilities extrahieren
+    # Trivy Vulnerabilities
+    trivy_vulns = []
     for result in trivy_data.get("Results", []):
+        target = result.get("Target", "")
+        target_type = result.get("Type", "")
+        
+        # Vulnerabilities
         for vuln in result.get("Vulnerabilities", []):
-            trivy_logs.append({
-                "Title": vuln.get("Title", "No Title"),
-                "Severity": vuln.get("Severity", "N/A"),
-                "PkgName": vuln.get("PkgName", "N/A"),
+            trivy_vulns.append({
+                "Package": vuln.get("PkgName", "N/A"),
+                "Version": vuln.get("InstalledVersion", "N/A"),
+                "FixedVersion": vuln.get("FixedVersion", "Nicht verfügbar"),
+                "Severity": vuln.get("Severity", "UNKNOWN"),
+                "Title": vuln.get("Title", "N/A"),
+                "CVE": vuln.get("VulnerabilityID", "N/A"),
+                "Description": vuln.get("Description", ""),
+                "Target": target,
                 "Type": "Vulnerability"
             })
         
         # Misconfigurations extrahieren
         for misc in result.get("Misconfigurations", []):
-            trivy_logs.append({
-                "Title": misc.get("Title", "No Title"),
-                "Severity": misc.get("Severity", "N/A"),
-                "PkgName": misc.get("ID", "N/A"),
+            trivy_vulns.append({
+                "Package": target,
+                "Version": "N/A",
+                "FixedVersion": misc.get("Resolution", "Siehe Beschreibung"),
+                "Severity": misc.get("Severity", "UNKNOWN"),
+                "Title": misc.get("Title", "N/A"),
+                "CVE": misc.get("ID", "N/A"),
+                "Description": misc.get("Description", ""),
+                "Target": target,
                 "Type": "Misconfiguration"
             })
+        
+        # Secrets
+        for secret in result.get("Secrets", []):
+            trivy_vulns.append({
+                "Package": target,
+                "Version": "N/A",
+                "FixedVersion": "Entfernen Sie das Secret",
+                "Severity": "HIGH",
+                "Title": f"Secret gefunden: {secret.get('RuleID', 'N/A')}",
+                "CVE": "N/A",
+                "Description": secret.get("Match", ""),
+                "Target": target,
+                "Type": "Secret"
+            })
     
-    # Nach Schweregrad sortieren (kritisch zuerst)
-    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
-    trivy_logs.sort(key=lambda x: severity_order.get(x.get("Severity", "UNKNOWN"), 5))
+    # Nach Schweregrad sortieren
+    trivy_vulns.sort(key=lambda x: severity_order.get(x.get("Severity", "UNKNOWN"), 5))
     
-    # OWASP-Vulnerabilities extrahieren
-    owasp_logs = []
+    # OWASP Vulnerabilities
+    owasp_vulns = []
     for dep in owasp_data.get("dependencies", []):
-        if dep.get("vulnerabilities"):
-            owasp_logs.append(dep)
+        package_name = dep.get("fileName", "Unknown")
+        
+        for vuln in dep.get("vulnerabilities", []):
+            owasp_vulns.append({
+                "Package": package_name,
+                "Version": dep.get("version", "N/A"),
+                "FixedVersion": ", ".join(vuln.get("versions", [])) or "Nicht verfügbar",
+                "Severity": vuln.get("severity", "UNKNOWN").upper(),
+                "Title": vuln.get("name", "N/A"),
+                "CVE": vuln.get("name", "N/A"),
+                "Description": vuln.get("description", ""),
+                "Target": "Abhängigkeit",
+                "Type": "OWASP"
+            })
     
-    return trivy_logs[:max_items], owasp_logs[:max_items]
+    # Nach Schweregrad sortieren
+    owasp_vulns.sort(key=lambda x: severity_order.get(x.get("Severity", "UNKNOWN"), 5))
+    
+    # Kombiniere und begrenze auf max_items
+    all_vulns = trivy_vulns + owasp_vulns
+    all_vulns.sort(key=lambda x: severity_order.get(x.get("Severity", "UNKNOWN"), 5))
+    
+    return all_vulns[:max_items]
 
 
 def build_prompt_with_logs(trivy_data, owasp_data):
     """
-    Erstellt einen humorvollen Prompt mit den Sicherheitsergebnissen.
+    Erstellt einen strukturierten Prompt mit den Sicherheitsergebnissen.
+    Enthält jetzt sowohl eine humorvolle Zusammenfassung als auch strukturierte 
+    Informationen für eine detaillierte Berichterstellung.
     """
     try:
+        # Lädt das Humor-Template
         humor_base = Path(MODEL_HUMOR_PATH).read_text().strip()
         
         # Extrahiert die relevantesten Vulnerabilitäten
-        trivy_logs, owasp_logs = extract_vulnerabilities_for_prompt(trivy_data, owasp_data)
+        vulnerabilities = extract_vulnerabilities_for_prompt(trivy_data, owasp_data)
         
-        trivy_text = "\n\n".join([
-            f"🔥 Trivy {i + 1}: {log.get('Title', 'No Title')}\n"
-            f"Severity: {log.get('Severity', 'N/A')} | Type: {log.get('Type', 'N/A')} | ID: {log.get('PkgName', 'N/A')}"
-            for i, log in enumerate(trivy_logs)
-        ]) or "✅ Trivy found no vulnerabilities."
+        # Berechnet Zusammenfassungen für einen Überblick
+        trivy_summary = summarize_trivy_results(trivy_data.get("Results", []))
+        owasp_summary = summarize_owasp_results(owasp_data.get("dependencies", []))
+        
+        # Erstellt eine Übersicht für den Report
+        overview = {
+            "trivy": {
+                "total": sum(trivy_summary.values()),
+                **trivy_summary
+            },
+            "owasp": {
+                "total": sum(owasp_summary.values()),
+                **owasp_summary
+            },
+            "total": {
+                "critical": trivy_summary["critical"] + owasp_summary["critical"],
+                "high": trivy_summary["high"] + owasp_summary["high"],
+                "medium": trivy_summary["medium"] + owasp_summary["medium"],
+                "low": trivy_summary["low"] + owasp_summary["low"],
+            }
+        }
+        
+        # Erstellt einen aufbereiteten Prompt für die KI
+        prompt = f"""
+{humor_base}
 
-        owasp_text = "\n\n".join([
-            f"📦 OWASP {i + 1}: {dep.get('fileName', 'Unknown')} — " + \
-            ", ".join([v.get("name", "Unknown CVE") for v in dep.get("vulnerabilities", [])])
-            for i, dep in enumerate(owasp_logs) if dep.get("vulnerabilities")
-        ]) or "✅ OWASP found no vulnerable dependencies."
+## ÜBERSICHT DER SICHERHEITSPROBLEME
 
-        return f"{humor_base}\n\n== Trivy Findings ==\n\n{trivy_text}\n\n== OWASP Findings ==\n\n{owasp_text}"
+Trivy-Scan:
+- Kritisch: {overview['trivy']['critical']}
+- Hoch: {overview['trivy']['high']}
+- Mittel: {overview['trivy']['medium']}
+- Niedrig: {overview['trivy']['low']}
+
+OWASP-Scan:
+- Kritisch: {overview['owasp']['critical']}
+- Hoch: {overview['owasp']['high']}
+- Mittel: {overview['owasp']['medium']}
+- Niedrig: {overview['owasp']['low']}
+
+## DETAILLIERTE SICHERHEITSPROBLEME
+Die folgenden {len(vulnerabilities)} wichtigsten Sicherheitsprobleme wurden identifiziert:
+
+{json.dumps(vulnerabilities, indent=2)}
+
+## ANWEISUNGEN FÜR DIE KI
+
+Erstelle einen humorvollen und informativen Sicherheitsbericht mit den folgenden Abschnitten:
+
+1. WITZ: Ein humorvoller Einleitungssatz oder Absatz, der die Sicherheitslage zusammenfasst.
+
+2. SICHERHEITSÜBERSICHT: Eine Markdown-Tabelle mit den wichtigsten gefundenen Sicherheitsproblemen. Die Tabelle sollte folgende Spalten haben:
+   - Package/Komponente
+   - Schweregrad
+   - Problem (CVE/ID)
+   - Verfügbare Lösung
+   - Empfohlene Aktion
+
+3. TECHNISCHE HINWEISE: Kurze technische Details zu den 2-3 kritischsten Problemen (falls vorhanden).
+
+4. EMPFOHLENE SCHRITTE: 2-3 konkrete Schritte zur Behebung der wichtigsten Probleme.
+
+Wenn keine Probleme gefunden wurden, erstelle einen humorvollen Glückwunschtext.
+Beende den Bericht immer mit einem kurzen, humorvollen Absatz.
+"""
+        return prompt
     except Exception as e:
         logging.error(f"Error building prompt: {e}")
         return "Fehler beim Erstellen der Sicherheitszusammenfassung."
@@ -436,9 +541,9 @@ def save_message_to_file(message: str):
     Speichert die generierte Nachricht in einer Datei.
     """
     try:
-        path = Path(__file__).parent / "main_message.txt"
+        path = Path(__file__).parent / "security_report.txt"
         path.write_text(message, encoding="utf-8")
-        logging.info(f"DeepSeek message saved to {path}")
+        logging.info(f"Security report saved to {path}")
         return path
     except Exception as e:
         logging.error(f"Error saving message: {e}")
@@ -450,18 +555,18 @@ async def send_prompt_to_deepseek(prompt):
         response = await client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": "You are a sarcastic security assistant."},
+                {"role": "system", "content": "You are a security expert with a sense of humor."},
                 {"role": "user", "content": prompt}
             ],
             temperature=1.0
         )
         message = response.choices[0].message.content
         if not message or not isinstance(message, str):
-            return "DeepSeek returned no valid response. Even Sheldon is confused. 🔍"
-        return message if "Bazinga" in message else message + "\nBazinga! ⚛️"
+            return "KI-Modell lieferte keine gültige Antwort. Bitte prüfen Sie die Scan-Ergebnisse manuell."
+        return message
     except Exception as e:
         logging.error(f"Exception bei DeepSeek: {e}")
-        return "Fehler bei der API-Anfrage an DeepSeek."
+        return f"Fehler bei der API-Anfrage an DeepSeek: {str(e)}"
 
 
 # Clean output for Discord
@@ -580,19 +685,24 @@ async def main():
             trivy_file = run_trivy_scan(temp_path, CURRENT_COMMIT_ID)
             owasp_file = run_owasp_scan(temp_path, CURRENT_COMMIT_ID)
             
-            # Ladet die Scan-Ergebnisse
+            # Lädt die Scan-Ergebnisse
             trivy_data, owasp_data = load_scan_results(CURRENT_COMMIT_ID)
             
-            # Speichert Ergebnisse
+            # Speichert Ergebnisse für Frontend
             save_analysis_json(trivy_data, owasp_data, CURRENT_COMMIT_ID)
 
-            # Erstellt und sendet Nachricht
+            # Erstellt einen strukturierten Prompt mit den Scan-Ergebnissen
             prompt = build_prompt_with_logs(trivy_data, owasp_data)
-            message = await send_prompt_to_deepseek(prompt)
-            save_message_to_file(message)
             
+            # Generiert den Sicherheitsbericht mit DeepSeek
+            security_report = await send_prompt_to_deepseek(prompt)
+            
+            # Speichert den Bericht
+            save_message_to_file(security_report)
+            
+            # Sendet den Bericht an Discord, falls ein Webhook konfiguriert ist
             if DISCORD_WEBHOOK_URL:
-                await send_discord(message)
+                await send_discord(security_report)
                 
         logging.info("Security analysis completed successfully")
                 
