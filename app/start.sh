@@ -8,4 +8,4 @@ echo "▶️ Running main.py..."
 python3 /app/main.py
 
 # 4) Container am Leben halten (optional, wenn nötig)
-# sleep infinity
+# sleep infinity.
