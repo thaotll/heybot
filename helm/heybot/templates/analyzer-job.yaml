@@ -43,6 +43,7 @@ spec:
             - name: analysis-volume
               mountPath: /app/analysis 
             - name: humor-files
+              mountPath: /app/model_humor.txt
               subPath: model_humor.txt 
       volumes:
         - name: analysis-volume
