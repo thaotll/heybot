@@ -52,7 +52,7 @@ jobs:
 
       - name: Update Kubernetes Manifests with Helm
         run: |
-          echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }}"
+          echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }} for all relevant deployments (including analyzer job)"
           
           # Ensure base k8s manifest path exists
           mkdir -p ${{ env.K8S_MANIFEST_PATH }}
@@ -61,7 +61,8 @@ jobs:
           # This prevents the mv command from failing on non-empty directories like 'tests'
           # and ensures old versions of Helm-managed files are removed, while keeping other YAMLs.
           echo "Cleaning up previously Helm-generated files in ${{ env.K8S_MANIFEST_PATH }} that are managed by this chart"
-          rm -f ${{ env.K8S_MANIFEST_PATH }}/deployment.yaml
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/deployment.yaml 
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/analyzer-job.yaml 
           rm -f ${{ env.K8S_MANIFEST_PATH }}/service.yaml
           rm -f ${{ env.K8S_MANIFEST_PATH }}/serviceaccount.yaml
           # Add other specific files Helm might generate here if your chart evolves (e.g., ingress.yaml, hpa.yaml)
@@ -113,14 +114,3 @@ jobs:
           else
             echo "No manifest changes to commit."
           fi
-
-      - name: Run security analysis container
-        run: |
-          mkdir -p $(pwd)/analysis 
-          docker run --rm \
-            -v $(pwd)/analysis:/app/analysis \
-            -e DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
-            -e MODEL_HUMOR_PATH=/app/model_humor.txt \
-            -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
-            -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }}
