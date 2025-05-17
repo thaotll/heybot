@@ -27,12 +27,12 @@ spec:
       restartPolicy: Never # Job soll nicht neu starten, wenn er fehlschlägt, sondern als fehlgeschlagen gelten
       containers:
         - name: analyzer
-          image: "ghcr.io/thaotll/heybot-with-trivy-output:c5a3a299c9fce84578474c1691c87afa8f02f389"
+          image: "ghcr.io/thaotll/heybot-with-trivy-output:7d64367d01b787fd2fefbaf38dab43272aeba363"
           imagePullPolicy: Always
           command: ["/app/start.sh"] # Stellt sicher, dass main.py ausgeführt wird
           env:
             - name: CURRENT_COMMIT_ID
-              value: "c5a3a299c9fce84578474c1691c87afa8f02f389" # Der Image-Tag ist Commit-ID
+              value: "7d64367d01b787fd2fefbaf38dab43272aeba363" # Der Image-Tag ist Commit-ID
             - name: MODEL_HUMOR_PATH
               value: /app/model_humor.txt 
             # Secrets sollten über Kubernetes Secrets eingebunden werden
@@ -50,7 +50,6 @@ spec:
             - name: analysis-volume
               mountPath: /app/analysis 
             - name: humor-files
-              mountPath: /app/model_humor.txt
               subPath: model_humor.txt 
       volumes:
         - name: analysis-volume
