@@ -192,5 +192,9 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 app/info
-app/main_message.txt
-app/bazinga_message.txt
+
+# OWASP Dependency-Check files
+analysis/owasp-*.json
+analysis/dependency-check-*.json
+analysis/dependency-check-*.html
+analysis/owasp-data/
