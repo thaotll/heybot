@@ -11,6 +11,7 @@ metadata:
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
@@ -43,6 +44,7 @@ spec:
             - name: analysis-volume
               mountPath: /app/analysis 
             - name: humor-files
+              mountPath: /app/model_humor.txt # TEST_COMMENT
               subPath: model_humor.txt 
       volumes:
         - name: analysis-volume
