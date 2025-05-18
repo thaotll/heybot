@@ -93,7 +93,7 @@ jobs:
 
       - name: Upload scan results
         if: always() # Ensure results are uploaded even if the previous step fails (e.g. due to jq errors if file is malformed but exists)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: scan-results-${{ env.CURRENT_COMMIT_ID }}
           path: ${{ github.workspace }}/analysis_results
