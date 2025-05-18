@@ -99,7 +99,7 @@ jobs:
 
       - name: Update Kubernetes Manifests with Helm
         run: |
-          echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }} for all relevant deployments (including analyzer job)"
+          echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }} for all relevant deployments"
           
           # Ensure base k8s manifest path exists
           mkdir -p ${{ env.K8S_MANIFEST_PATH }}
@@ -109,7 +109,6 @@ jobs:
           # and ensures old versions of Helm-managed files are removed, while keeping other YAMLs.
           echo "Cleaning up previously Helm-generated files in ${{ env.K8S_MANIFEST_PATH }} that are managed by this chart"
           rm -f ${{ env.K8S_MANIFEST_PATH }}/deployment.yaml 
-          rm -f ${{ env.K8S_MANIFEST_PATH }}/analyzer-job.yaml 
           rm -f ${{ env.K8S_MANIFEST_PATH }}/service.yaml
           rm -f ${{ env.K8S_MANIFEST_PATH }}/serviceaccount.yaml
           # Add other specific files Helm might generate here if your chart evolves (e.g., ingress.yaml, hpa.yaml)

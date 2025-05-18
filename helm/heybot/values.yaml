@@ -17,20 +17,6 @@ serviceAccount:
     maxReplicas: 10
     targetCPUUtilizationPercentage: 80
 
-# Konfiguration für den Analyzer Job
-analyzer:
-  pvcName: analysis-pvc 
-  secrets:
-    discordWebhook:
-      name: "heybot-secrets" 
-      key: "DISCORD_WEBHOOK_URL"
-    deepseekApiKey:
-      name: "heybot-secrets"
-      key: "DEEPSEEK_API_KEY"
-    humorSecretName: 
-      name: "heybot-humor-secret"
-      key: "model_humor.txt"
-
 service:
   port: 80
   targetPort: 3000
