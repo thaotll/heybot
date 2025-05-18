@@ -50,6 +50,54 @@ jobs:
           docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }}
           docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:latest
 
+      - name: Create directory for scan results
+        run: mkdir -p ${{ github.workspace }}/analysis_results
+
+      - name: Run Security Scans (Trivy & OWASP via main.py)
+        id: security_scan
+        run: |
+          echo "Running security scans in Docker container..."
+          docker run --rm \
+            -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
+            -e DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
+            -e MODEL_HUMOR_PATH=/app/model_humor.txt \
+            -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
+            -v ${{ github.workspace }}/analysis_results:/app/analysis \
+            ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} \
+            python /app/main.py
+
+          echo "Scan script finished. Listing contents of analysis_results:"
+          ls -lA ${{ github.workspace }}/analysis_results
+
+          # Überprüfe das Ergebnis des Scans aus der generierten latest.json
+          # Stelle sicher, dass latest.json existiert, bevor jq darauf zugreift.
+          LATEST_JSON_PATH="${{ github.workspace }}/analysis_results/latest.json"
+          if [ ! -f "$LATEST_JSON_PATH" ]; then
+            echo "::error::Scan result file latest.json not found in analysis_results!"
+            echo "Expected at: $LATEST_JSON_PATH"
+            exit 1
+          fi
+          
+          echo "Contents of latest.json:"
+          cat "$LATEST_JSON_PATH"
+
+          if jq -e '.securityScans[] | select(.status=="error")' "$LATEST_JSON_PATH"; then
+            echo "::error::Security scan failed with critical errors according to latest.json."
+            exit 1
+          elif jq -e '.securityScans[] | select(.status=="warning")' "$LATEST_JSON_PATH"; then
+            echo "::warning::Security scan found warnings according to latest.json."
+            # Workflow wird bei Warnungen nicht abgebrochen, kann bei Bedarf geändert werden.
+          else
+            echo "Security scan completed without critical errors or warnings reported in latest.json."
+          fi
+
+      - name: Upload scan results
+        if: always() # Ensure results are uploaded even if the previous step fails (e.g. due to jq errors if file is malformed but exists)
+        uses: actions/upload-artifact@v3
+        with:
+          name: scan-results-${{ env.CURRENT_COMMIT_ID }}
+          path: ${{ github.workspace }}/analysis_results
+
       - name: Update Kubernetes Manifests with Helm
         run: |
           echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }} for all relevant deployments (including analyzer job)"

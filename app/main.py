@@ -676,33 +676,32 @@ async def get_commit_analysis(commit_id):
 async def main():
     try:
         logging.info("Starting security analysis")
-        
-        # Erstellt ein temporäres Verzeichnis für die Analyse
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            
-            # Führt Analyse für aktuellen Commit durch
-            trivy_file = run_trivy_scan(temp_path, CURRENT_COMMIT_ID)
-            owasp_file = run_owasp_scan(temp_path, CURRENT_COMMIT_ID)
-            
-            # Lädt die Scan-Ergebnisse
-            trivy_data, owasp_data = load_scan_results(CURRENT_COMMIT_ID)
-            
-            # Speichert Ergebnisse für Frontend
-            save_analysis_json(trivy_data, owasp_data, CURRENT_COMMIT_ID)
 
-            # Erstellt einen strukturierten Prompt mit den Scan-Ergebnissen
-            prompt = build_prompt_with_logs(trivy_data, owasp_data)
+        # Das zu scannende Verzeichnis ist /app, wo der Code im Container liegt
+        scan_target_path = Path("/app")
             
-            # Generiert den Sicherheitsbericht mit DeepSeek
-            security_report = await send_prompt_to_deepseek(prompt)
+        # Führt Analyse für aktuellen Commit durch
+        trivy_file = run_trivy_scan(scan_target_path, CURRENT_COMMIT_ID)
+        owasp_file = run_owasp_scan(scan_target_path, CURRENT_COMMIT_ID)
             
-            # Speichert den Bericht
-            save_message_to_file(security_report)
+        # Lädt die Scan-Ergebnisse
+        trivy_data, owasp_data = load_scan_results(CURRENT_COMMIT_ID)
             
-            # Sendet den Bericht an Discord, falls ein Webhook konfiguriert ist
-            if DISCORD_WEBHOOK_URL:
-                await send_discord(security_report)
+        # Speichert Ergebnisse für Frontend
+        save_analysis_json(trivy_data, owasp_data, CURRENT_COMMIT_ID)
+
+        # Erstellt einen strukturierten Prompt mit den Scan-Ergebnissen
+        prompt = build_prompt_with_logs(trivy_data, owasp_data)
+            
+        # Generiert den Sicherheitsbericht mit DeepSeek
+        security_report = await send_prompt_to_deepseek(prompt)
+            
+        # Speichert den Bericht
+        save_message_to_file(security_report)
+            
+        # Sendet den Bericht an Discord, falls ein Webhook konfiguriert ist
+        if DISCORD_WEBHOOK_URL:
+            await send_discord(security_report)
                 
         logging.info("Security analysis completed successfully")
                 
