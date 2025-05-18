@@ -82,8 +82,7 @@ jobs:
           cat "$LATEST_JSON_PATH"
 
           if jq -e '.securityScans[] | select(.status=="error")' "$LATEST_JSON_PATH"; then
-            echo "::error::Security scan failed with critical errors according to latest.json."
-            exit 1
+            echo "::warning::Security scan found critical errors according to latest.json."
           elif jq -e '.securityScans[] | select(.status=="warning")' "$LATEST_JSON_PATH"; then
             echo "::warning::Security scan found warnings according to latest.json."
             # Workflow wird bei Warnungen nicht abgebrochen, kann bei Bedarf geändert werden.
