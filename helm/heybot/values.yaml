@@ -59,6 +59,15 @@ ingress:
 env:
   - name: MODEL_HUMOR_PATH
     value: "/app/secrets/model_humor.txt"
+  - name: DEEPSEEK_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: heybot-secrets
+        key: deepseek-api-key
+  - name: DISCORD_WEBHOOK_URL
+      secretKeyRef:
+        name: heybot-secrets
+        key: discord-webhook-url
 
 # VolumeMounts für das Secret
 volumeMounts:
