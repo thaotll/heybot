@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":dependencyDashboard"
+  ],
+  "helm-values": {
+    "enabled": true
+  },
+  "dockerfile": {
+    "enabled": true
+  },
+  "github-actions": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Regeln für nicht-kritische Updates (minor, patch)",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": false,
+      "automergeType": "pr",
+      "requiredStatusChecks": null
+    },
+    {
+      "description": "Alle GitHub Actions Updates gruppieren",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions Aktualisierungen"
+    },
+    {
+      "description": "Alle Helm Chart Abhängigkeiten gruppieren",
+      "matchDatasources": ["helm"],
+      "groupName": "Helm Chart Abhängigkeiten"
+    }
+  ]
+} 
