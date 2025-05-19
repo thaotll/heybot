@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "heybot.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
+  {{- if or (not (hasKey .Values "autoscaling")) (and (hasKey .Values "autoscaling") (not (hasKey .Values.autoscaling "enabled"))) (and (hasKey .Values "autoscaling") (hasKey .Values.autoscaling "enabled") (not .Values.autoscaling.enabled)) }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
@@ -40,6 +40,10 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}

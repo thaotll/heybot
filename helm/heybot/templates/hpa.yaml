@@ -1,4 +1,4 @@
-{{- if .Values.autoscaling.enabled }}
+{{- if and (hasKey .Values "autoscaling") (hasKey .Values.autoscaling "enabled") (eq .Values.autoscaling.enabled true) }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

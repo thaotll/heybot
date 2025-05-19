@@ -3,19 +3,19 @@ image:
   tag: latest
   pullPolicy: Always
 
+replicaCount: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
 serviceAccount:
   create: true
   automount: true
   annotations: {}
   # name: "spezifischer-name" # Überschreibt den generierten Namen, falls nötig
-
-# Konfiguration für das Haupt-Deployment
-  replicaCount: 1
-  autoscaling:
-    enabled: false
-    minReplicas: 1
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 80
 
 service:
   port: 80
@@ -23,14 +23,12 @@ service:
   nodePort: 31000
   type: NodePort
 
-# Zusätzliche Konfigurationen für Pods (gelten für Deployment und Job, falls nicht überschrieben)
 podAnnotations: {}
 podLabels: {}
 
 imagePullSecrets: []
 # - name: ghcr-secret
 
-# Ressourcenanforderungen und -limits (gelten für Deployment und Job)
 resources: {}
   # limits:
   #   cpu: 100m
@@ -43,19 +41,10 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 80
-
 ingress:
   enabled: false
   className: ""
   annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # kubernetes.io/tls-acme: "true"
   hosts:
     - host: heybot.local
       paths:
@@ -65,3 +54,20 @@ ingress:
   #  - secretName: chart-example-tls
   #    hosts:
   #      - chart-example.local
+
+# Umgebungsvariablen für heybot (insb. MODEL_HUMOR_PATH)
+env:
+  - name: MODEL_HUMOR_PATH
+    value: "/app/secrets/model_humor.txt"
+
+# VolumeMounts für das Secret
+volumeMounts:
+  - name: model-humor-volume
+    mountPath: /app/secrets
+    readOnly: true
+
+# Volume-Definition für das Secret
+volumes:
+  - name: model-humor-volume
+    secret:
+      secretName: heybot-humor-secret
