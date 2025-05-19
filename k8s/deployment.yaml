@@ -28,7 +28,7 @@ spec:
       serviceAccountName: heybot
       containers:
         - name: heybot
-          image: "ghcr.io/thaotll/heybot-with-trivy-output:a68f3d37aaf2409d0df7a04a3722299731804bdf"
+          image: "ghcr.io/thaotll/heybot-with-trivy-output:96f9a8052a65f661c2dbd547c4bb3033b3a8aac2"
           imagePullPolicy: Always
           ports:
             - name: http
@@ -37,6 +37,16 @@ spec:
           env:
             - name: MODEL_HUMOR_PATH
               value: /app/secrets/model_humor.txt
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: DEEPSEEK_API_KEY
+                  name: heybot-secrets
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  key: DISCORD_WEBHOOK_URL
+                  name: heybot-secrets
           volumeMounts:
             - mountPath: /app/secrets
               name: model-humor-volume
