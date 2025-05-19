@@ -26,5 +26,5 @@ kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.pas
 #### **3. Let's run **
 ```bash
 1. go on heybot via shell
-2. run command: python bazinga_cve_bot.py
+2. run command: python main.py
 3. See your message in discord channel
