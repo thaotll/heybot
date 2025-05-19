@@ -81,3 +81,9 @@ volumes:
   - name: model-humor-volume
     secret:
       secretName: heybot-humor-secret
+
+# Persistence für Scan-Ergebnisse
+scanResultPersistence:
+  enabled: true
+  claimName: analysis-pvc 
+  mountPath: /app/analysis
