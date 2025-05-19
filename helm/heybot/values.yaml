@@ -55,7 +55,7 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-# Umgebungsvariablen für heybot (insb. MODEL_HUMOR_PATH)
+# Umgebungsvariablen für heybot
 env:
   - name: MODEL_HUMOR_PATH
     value: "/app/secrets/model_humor.txt"
@@ -63,11 +63,12 @@ env:
     valueFrom:
       secretKeyRef:
         name: heybot-secrets
-        key: deepseek-api-key
+        key: DEEPSEEK_API_KEY
   - name: DISCORD_WEBHOOK_URL
+    valueFrom:
       secretKeyRef:
         name: heybot-secrets
-        key: discord-webhook-url
+        key: DISCORD_WEBHOOK_URL
 
 # VolumeMounts für das Secret
 volumeMounts:
