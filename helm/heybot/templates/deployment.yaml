@@ -59,18 +59,18 @@ spec:
           {{- with .Values.volumeMounts }}
           volumeMounts:
             {{- toYaml . | nindent 12 }}
-            {{- if .Values.scanResultPersistence.enabled }}
+            {{- if $.Values.scanResultPersistence.enabled }}
             - name: scan-results-storage
-              mountPath: {{ .Values.scanResultPersistence.mountPath }}
+              mountPath: {{ $.Values.scanResultPersistence.mountPath | quote }}
             {{- end }}
           {{- end }}
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
-        {{- if .Values.scanResultPersistence.enabled }}
+        {{- if $.Values.scanResultPersistence.enabled }}
         - name: scan-results-storage
           persistentVolumeClaim:
-            claimName: {{ .Values.scanResultPersistence.claimName }}
+            claimName: {{ $.Values.scanResultPersistence.claimName | quote }}
         {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
