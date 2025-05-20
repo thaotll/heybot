@@ -33,6 +33,9 @@ ENV CURRENT_COMMIT_ID=$CURRENT_COMMIT_ID
 COPY ./app /app
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
+# NEW STEP: Copy pre-generated scan results from CI into the image
+COPY ./ci_scan_output /app/pre_generated_scans/
+
 # 5) Start-Skript + Analyse-Ordner
 RUN chmod +x /app/start.sh
 RUN mkdir -p /app/analysis

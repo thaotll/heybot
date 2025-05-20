@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: heybot-analysis-pvc
+  namespace: default # Ensure this is the namespace where your heybot app and frontend run
+spec:
+  storageClassName: manual # Must match the PV's storageClassName
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi 

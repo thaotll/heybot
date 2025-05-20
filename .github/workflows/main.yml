@@ -8,73 +8,75 @@ env:
   HELM_CHART_PATH: "./helm/heybot"
   HELM_RELEASE_NAME: "heybot"
   K8S_MANIFEST_PATH: "k8s"
+  # Directory where CI scans will output results, relative to workspace root
+  CI_SCAN_OUTPUT_DIR: "${{ github.workspace }}/ci_scan_output"
 
 jobs:
   build_scan_and_update_manifests:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the code with write permission
       - name: Checkout code
         uses: actions/checkout@v2
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           fetch-depth: 0
-        
-      # Get current commit ID
+
       - name: Get current commit ID
         id: get_commit_id
         run: echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
-      - name: Setup Helm
-        uses: azure/setup-helm@v3
+      - name: Set up Python
+        uses: actions/setup-python@v3
         with:
-          version: 'latest'
+          python-version: '3.11' # Match Dockerfile Python version
 
-      # Login to GitHub Container Registry
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
+      - name: Install Python dependencies for scanning script
+        run: pip install -r app/requirements.txt
 
-      # Build and push the Docker image with current commit ID
-      - name: Build and push Docker image
+      - name: Create directory for CI scan results
+        run: mkdir -p ${{ env.CI_SCAN_OUTPUT_DIR }}
+
+      - name: Run Security Scans (Trivy & OWASP via main.py - output to CI_SCAN_OUTPUT_DIR)
+        id: security_scan_ci
         run: |
-          docker build --no-cache \
-            --build-arg CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            -t ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} \
-            -t ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:latest .
+          echo "Running security scans locally for CI feedback and image baking..."
+          # Ensure main.py writes its output to the CI_SCAN_OUTPUT_DIR
+          # This might require main.py to accept an output path argument or use an env var.
+          # For now, assuming main.py uses a relative path like 'analysis/' for output.
+          # We will run it from a directory such that its output lands in CI_SCAN_OUTPUT_DIR
+          # IMPORTANT: Adjust main.py or this step if main.py cannot easily redirect output.
           
-          docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }}
-          docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:latest
+          # Create a temporary app directory structure for main.py to run correctly
+          mkdir -p temp_app_for_ci
+          cp -r app/* temp_app_for_ci/
+          # Create the target analysis directory *within* the structure main.py expects
+          mkdir -p temp_app_for_ci/analysis 
 
-      - name: Create directory for scan results
-        run: mkdir -p ${{ github.workspace }}/analysis_results
+          echo "Running python temp_app_for_ci/main.py..."
+          # Execute main.py from within temp_app_for_ci so its relative paths work
+          # Pass necessary secrets and config. DISCORD_WEBHOOK_URL might be optional here if only for feedback.
+          (cd temp_app_for_ci && \
+            CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
+            DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
+            MODEL_HUMOR_PATH=model_humor.txt \
+            DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
+            python main.py)
+          
+          echo "Moving scan results from temp_app_for_ci/analysis to ${{ env.CI_SCAN_OUTPUT_DIR }}"
+          # Move the results (e.g., latest.json, trivy json, owasp html) to CI_SCAN_OUTPUT_DIR
+          # This assumes main.py placed its output into temp_app_for_ci/analysis/
+          mv temp_app_for_ci/analysis/* ${{ env.CI_SCAN_OUTPUT_DIR }}/
+          rm -rf temp_app_for_ci # Clean up temporary directory
 
-      - name: Run Security Scans (Trivy & OWASP via main.py)
-        id: security_scan
-        run: |
-          echo "Running security scans in Docker container..."
-          docker run --rm \
-            -e CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            -e DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
-            -e MODEL_HUMOR_PATH=/app/model_humor.txt \
-            -e DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
-            -v ${{ github.workspace }}/analysis_results:/app/analysis \
-            ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} \
-            python /app/main.py
+          echo "Scan script finished. Listing contents of ${{ env.CI_SCAN_OUTPUT_DIR }}:"
+          ls -lA ${{ env.CI_SCAN_OUTPUT_DIR }}
 
-          echo "Scan script finished. Listing contents of analysis_results:"
-          ls -lA ${{ github.workspace }}/analysis_results
-
-          # Überprüfe das Ergebnis des Scans aus der generierten latest.json
-          # Stelle sicher, dass latest.json existiert, bevor jq darauf zugreift.
-          LATEST_JSON_PATH="${{ github.workspace }}/analysis_results/latest.json"
+          LATEST_JSON_PATH="${{ env.CI_SCAN_OUTPUT_DIR }}/latest.json"
           if [ ! -f "$LATEST_JSON_PATH" ]; then
-            echo "::error::Scan result file latest.json not found in analysis_results!"
+            echo "::error::Scan result file latest.json not found in ${{ env.CI_SCAN_OUTPUT_DIR }}!"
             echo "Expected at: $LATEST_JSON_PATH"
+            # ls -lA ${{ env.CI_SCAN_OUTPUT_DIR }} # Double check content on error
             exit 1
           fi
           
@@ -85,55 +87,64 @@ jobs:
             echo "::warning::Security scan found critical errors according to latest.json."
           elif jq -e '.securityScans[] | select(.status=="warning")' "$LATEST_JSON_PATH"; then
             echo "::warning::Security scan found warnings according to latest.json."
-            # Workflow wird bei Warnungen nicht abgebrochen, kann bei Bedarf geändert werden.
           else
             echo "Security scan completed without critical errors or warnings reported in latest.json."
           fi
 
-      - name: Upload scan results
-        if: always() # Ensure results are uploaded even if the previous step fails (e.g. due to jq errors if file is malformed but exists)
+      - name: Upload CI scan results (for debugging/archive)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scan-results-${{ env.CURRENT_COMMIT_ID }}
-          path: ${{ github.workspace }}/analysis_results
+          name: ci-scan-results-${{ env.CURRENT_COMMIT_ID }}
+          path: ${{ env.CI_SCAN_OUTPUT_DIR }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build and push Docker image (now includes scan results)
+        run: |
+          docker build --no-cache \
+            --build-arg CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
+            -t ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} \
+            -t ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:latest .
+          
+          docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }}
+          docker push ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Update Kubernetes Manifests with Helm
         run: |
           echo "Updating image tag in Helm chart to ${{ env.CURRENT_COMMIT_ID }} for all relevant deployments"
           
-          # Ensure base k8s manifest path exists
           mkdir -p ${{ env.K8S_MANIFEST_PATH }}
           
-          # Remove specific files and directories in K8S_MANIFEST_PATH that Helm will manage/regenerate.
-          # This prevents the mv command from failing on non-empty directories like 'tests'
-          # and ensures old versions of Helm-managed files are removed, while keeping other YAMLs.
           echo "Cleaning up previously Helm-generated files in ${{ env.K8S_MANIFEST_PATH }} that are managed by this chart"
           rm -f ${{ env.K8S_MANIFEST_PATH }}/deployment.yaml 
           rm -f ${{ env.K8S_MANIFEST_PATH }}/service.yaml
           rm -f ${{ env.K8S_MANIFEST_PATH }}/serviceaccount.yaml
-          # Add other specific files Helm might generate here if your chart evolves (e.g., ingress.yaml, hpa.yaml)
-          # rm -f ${{ env.K8S_MANIFEST_PATH }}/ingress.yaml
-          # rm -f ${{ env.K8S_MANIFEST_PATH }}/hpa.yaml
-          rm -f ${{ env.K8S_MANIFEST_PATH }}/_helpers.tpl # Helm helper file
-          rm -f ${{ env.K8S_MANIFEST_PATH }}/NOTES.txt    # Helm notes file
-          rm -rf ${{ env.K8S_MANIFEST_PATH }}/tests       # Helm tests directory
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/_helpers.tpl 
+          rm -f ${{ env.K8S_MANIFEST_PATH }}/NOTES.txt    
+          rm -rf ${{ env.K8S_MANIFEST_PATH }}/tests       
 
-          # Helm templates into its standard subdirectory structure within K8S_MANIFEST_PATH
-          # e.g. k8s/heybot/templates/
           helm template ${{ env.HELM_RELEASE_NAME }} ./${{ env.HELM_CHART_PATH }} \
             --set image.tag=${{ env.CURRENT_COMMIT_ID }} \
             --set image.repository=ghcr.io/${{ env.USER }}/${{ env.IMAGE_NAME }} \
             --output-dir ${{ env.K8S_MANIFEST_PATH }}
             
-          # Define the source path of the templated files
           TEMPLATED_FILES_SOURCE_PATH="${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}/templates"
-          ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH="${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}" # For Helm versions < 3.1 or certain structures
+          ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH="${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}"
 
           if [ -d "$TEMPLATED_FILES_SOURCE_PATH" ]; then
             echo "Moving templated files from $TEMPLATED_FILES_SOURCE_PATH to ${{ env.K8S_MANIFEST_PATH }}"
-            # Move all contents, including subdirectories like 'tests'
             mv $TEMPLATED_FILES_SOURCE_PATH/* ${{ env.K8S_MANIFEST_PATH }}/
-            # Remove the now-empty chart-name directory structure
             rm -rf "${{ env.K8S_MANIFEST_PATH }}/${{ env.HELM_RELEASE_NAME }}"
           elif [ -d "$ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH" ]; then
             echo "Moving templated files from $ALTERNATIVE_TEMPLATED_FILES_SOURCE_PATH to ${{ env.K8S_MANIFEST_PATH }}"
@@ -152,10 +163,12 @@ jobs:
         run: |
           git config --global user.name 'GitHub Actions Bot'
           git config --global user.email 'actions@github.com'
+          # Add the new PV and PVC files as well if they are in K8S_MANIFEST_PATH
+          # or if they are top-level, adjust path. Assuming they are in k8s/ too.
           git add ${{ env.K8S_MANIFEST_PATH }}/*
           
           if ! git diff --staged --quiet; then
-            git commit -m "Update image to ${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} via Helm [skip ci]"
+            git commit -m "Update image to ${{ env.IMAGE_NAME }}:${{ env.CURRENT_COMMIT_ID }} via Helm, add PV/PVC [skip ci]"
             git push
           else
             echo "No manifest changes to commit."

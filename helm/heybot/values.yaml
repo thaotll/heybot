@@ -85,5 +85,5 @@ volumes:
 # Persistence für Scan-Ergebnisse
 scanResultPersistence:
   enabled: true
-  claimName: analysis-pvc 
-  mountPath: /app/analysis
+  claimName: "heybot-analysis-pvc"
+  mountPath: "/app/analysis"

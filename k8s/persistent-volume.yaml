@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: heybot-analysis-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual # Or your specific storage class for hostPath if you have one
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/heybot-analysis" # As discussed, on your Minikube node
+    type: DirectoryOrCreate # Ensures the directory is created if it doesn't exist 
