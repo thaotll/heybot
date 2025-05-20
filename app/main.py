@@ -5,13 +5,15 @@ import asyncio
 import subprocess
 import tempfile
 import shutil
-import datetime
 from pathlib import Path
 import argparse
+from datetime import datetime
 
 import aiohttp
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+import pytz
+import httpx
 
 
 # Configure logging
@@ -23,7 +25,7 @@ logging.basicConfig(
 # Zeige Startinformationen
 logging.info("=" * 50)
 logging.info("HeyBot Security Scanner gestartet")
-logging.info(f"Aktuelle Zeit: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+logging.info(f"Aktuelle Zeit: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 if os.path.exists('.git'):
     try:
         git_branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], text=True).strip()
@@ -308,6 +310,7 @@ def summarize_owasp_results(dependencies):
 def save_analysis_json(trivy_data, owasp_data, commit_id):
     """
     Speichert die Analyseergebnisse im JSON-Format.
+    Now constructs a more complete CodeAnalysis object.
     """
     # Vollständige Trivy-Daten analysieren
     trivy_summary = summarize_trivy_results(trivy_data.get("Results", []))
@@ -336,7 +339,24 @@ def save_analysis_json(trivy_data, owasp_data, commit_id):
     else:
         owasp_details = "Ergebnisse des OWASP Dependency-Check."
 
-    result = {
+    overall_status = "success"
+    if trivy_status == "error" or owasp_status == "error":
+        overall_status = "error"
+    elif trivy_status == "warning" or owasp_status == "warning":
+        overall_status = "warning"
+
+    # Construct the full CodeAnalysis object
+    analysis_result_full = {
+        "id": commit_id,
+        "commitId": commit_id,
+        "repository": "thaotll/heybot", # Placeholder
+        "branch": "main", # Placeholder
+        "timestamp": datetime.utcnow().isoformat() + "Z", # Timestamp of analysis generation
+        "status": overall_status,
+        "feedback": "HeyBot Analysis", # Placeholder for commit message
+        "author": "HeyBot", # Placeholder for commit author
+        "issues": [], # Placeholder
+        "files": [],  # Placeholder
         "securityScans": [
             {
                 "tool": "trivy",
@@ -350,21 +370,28 @@ def save_analysis_json(trivy_data, owasp_data, commit_id):
                 "vulnerabilities": owasp_summary,
                 "details": owasp_details
             }
-        ]
+        ],
+        "kubernetesStatus": { # Placeholder
+            "pods": {"total": 0, "running": 0, "pending": 0, "failed": 0},
+            "deployments": {"total": 0, "available": 0, "unavailable": 0},
+            "services": 0
+        }
     }
     
     # Speichert die Ergebnisse
     output_file = ANALYSIS_DIR / f"{commit_id}.json"
-    output_file.write_text(json.dumps(result, indent=2))
+    output_file.write_text(json.dumps(analysis_result_full, indent=2))
     logging.info(f"Analysis results saved to {output_file}")
     
     # Wenn es der aktuelle Commit ist, speichert auch als latest
-    if commit_id == CURRENT_COMMIT_ID:
+    # Ensure CURRENT_COMMIT_ID is defined and accessible here, might need to pass or get from env
+    current_commit_env = os.getenv('CURRENT_COMMIT_ID', None)
+    if commit_id == current_commit_env: # Use current_commit_env
         latest_file = ANALYSIS_DIR / "latest.json"
-        latest_file.write_text(json.dumps(result, indent=2))
+        latest_file.write_text(json.dumps(analysis_result_full, indent=2))
         logging.info("Analysis results saved as latest")
     
-    return result
+    return analysis_result_full # Return the full object
 
 
 def extract_vulnerabilities_for_prompt(trivy_data, owasp_data, max_items=10):

@@ -19,10 +19,12 @@ const nextConfig = {
         source: '/deepseek-message/:path*',
         destination: 'http://localhost:8080/deepseek-message/:path*',
       },
+      /* We are replacing this with pages/api/commitsProxy.js
       {
         source: '/api/commits',
         destination: 'http://localhost:8080/security-analysis/latest',
       },
+      */
     ]
   },
 }
