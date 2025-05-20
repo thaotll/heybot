@@ -626,7 +626,7 @@ async def analyze_specific_commit(commit_id, run_mode_arg='scan'):
 
 
     # Lade (möglicherweise vorhandene oder gerade erstellte) Scan-Ergebnisse
-    trivy_data, owasp_data = load_scan_results(f"trivy-{commit_id}.json")
+    trivy_data, owasp_data = load_scan_results(commit_id)
     result = save_analysis_json(trivy_data, owasp_data, commit_id)
 
     # Erstellt einen strukturierten Prompt mit den Scan-Ergebnissen
@@ -690,7 +690,7 @@ async def main():
     # Speichere die Analyseergebnisse (das passiert auch im Serve-Modus, um latest.json zu aktualisieren)
     # This might need adjustment if save_analysis_json should also be skipped in serve mode for some files.
     # For now, let it update latest.json based on what's in ANALYSIS_DIR.
-    trivy_results_for_save, owasp_results_for_save = load_scan_results(f"trivy-{commit_id_to_analyze}.json")
+    trivy_results_for_save, owasp_results_for_save = load_scan_results(commit_id_to_analyze)
     save_analysis_json(trivy_results_for_save, owasp_results_for_save, commit_id_to_analyze)
     logging.info(f"Analysis results saved as latest for commit {commit_id_to_analyze}")
 
