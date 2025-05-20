@@ -24,9 +24,9 @@ export async function fetchLatestAnalyses(forceRefresh = false): Promise<{analys
   try {
     // Use cached data if available and not expired, unless forceRefresh is true
     const now = Date.now();
-    // TEMPORARILY BYPASS CLIENT-SIDE CACHE FOR TESTING
-    /*
+    // RE-ENABLE CLIENT-SIDE CACHE
     if (!forceRefresh && cachedAnalyses && (now - lastFetchTime < CACHE_DURATION)) {
+      console.log("[lib/actions] Using client-side cached analyses.");
       return {
         analyses: cachedAnalyses,
         rateLimitInfo: remainingRequests < 100 ? 
@@ -34,11 +34,11 @@ export async function fetchLatestAnalyses(forceRefresh = false): Promise<{analys
           undefined
       };
     }
-    */
 
     // const fetchUrl = `/api/commits${forceRefresh ? '?refresh=true&' : '?'}ts=${new Date().getTime()}`;
     // Let the new proxy handle its own cache busting for the backend call.
     // The forceRefresh param can still be used if the proxy wants to use it for its own client-side caching if any.
+    // REMOVE ts=... from here as caching is re-enabled above, and proxy handles its backend cache busting.
     const fetchUrl = `/api/commitsProxy${forceRefresh ? '?refresh=true' : ''}`;
     console.log(`[lib/actions] Fetching from frontend: ${fetchUrl}`);
 
