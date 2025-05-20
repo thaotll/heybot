@@ -82,13 +82,19 @@ async def get_security_analysis(commit_id: str):
     Falls keine Analyse vorhanden ist, wird sie automatisch durchgeführt.
     """
     try:
-        analysis = get_commit_analysis(commit_id)
-        if analysis is None:
+        analysis_data = await get_commit_analysis(commit_id)
+        
+        if isinstance(analysis_data, tuple):
+            analysis_dict = analysis_data[0]
+        else:
+            analysis_dict = analysis_data
+
+        if analysis_dict is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Keine Analyse für Commit {commit_id} gefunden"
             )
-        return analysis
+        return analysis_dict
     except Exception as e:
         logging.error(f"Error analyzing commit {commit_id}: {str(e)}")
         raise HTTPException(

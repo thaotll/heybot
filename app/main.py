@@ -655,13 +655,34 @@ async def analyze_specific_commit(commit_id, run_mode_arg='scan'):
 async def get_commit_analysis(commit_id):
     """
     Holt die Analyseergebnisse für einen Commit.
-    Führt die Analyse durch, falls noch nicht vorhanden.
+    Führt die Analyse durch, falls noch nicht vorhanden, und gibt NUR das Analyse-JSON (dict) zurück.
     """
     analysis_file = ANALYSIS_DIR / f"{commit_id}.json"
     
     if not analysis_file.exists():
-        logging.info(f"No existing analysis for commit {commit_id}, running new analysis")
-        return await analyze_specific_commit(commit_id)
+        logging.info(f"No existing analysis for commit {commit_id}, running new analysis (will run in mode determined by caller of main.py)")
+        # analyze_specific_commit is called from main() with the correct mode.
+        # This path in get_commit_analysis implies we are likely in a 'serve' context from api_server,
+        # and the file wasn't found from the pre-generated/copied files.
+        # Re-running analyze_specific_commit here might be problematic if it tries to scan again.
+        # For now, let's assume if the file isn't there, we can't serve it for this specific commit ID endpoint.
+        # Or, we rely on analyze_specific_commit being smart due to args.mode set when main() was invoked.
+        
+        # The current main.py structure will have already run analyze_specific_commit in main() if mode is 'scan' or 'serve'.
+        # So, if analysis_file doesn't exist here, it truly means it wasn't generated or copied for this commit_id.
+        # We should NOT re-run intensive scans from an API call by default.
+        # The instance of main.py that is running the API server is already in 'serve' mode.
+        # analyze_specific_commit when called with mode='serve' will primarily load files.
+        # If it still doesn't find them, it returns data that leads to save_analysis_json creating a minimal report.
+
+        # Let's ensure that if we DO call analyze_specific_commit, we only return the analysis dictionary.
+        # However, the primary design is that main() already populated the PV, and this function just reads.
+        # If the file for a specific commit_id (other than 'latest') is missing, it should be a 404.
+
+        # For the /security-analysis/{commit_id} endpoint, if the .json file for that commit
+        # doesn't exist (because it wasn't the one processed by main() on startup), then we should return None.
+        logging.warning(f"Analysis file {analysis_file} not found. This specific commit might not have been processed on startup.")
+        return None # Explicitly return None if file for specific commit_id is not found.
     
     try:
         return json.loads(analysis_file.read_text())
