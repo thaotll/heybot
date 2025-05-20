@@ -28,7 +28,7 @@ spec:
       serviceAccountName: heybot
       containers:
         - name: heybot
-          image: "ghcr.io/thaotll/heybot-with-trivy-output:e0b7c5d7feea4c43688f59c7c0fef2f465fac224"
+          image: "ghcr.io/thaotll/heybot-with-trivy-output:65e2df7b4c36c3bbd4177739e030501be228da51"
           imagePullPolicy: Always
           ports:
             - name: http
@@ -59,4 +59,4 @@ spec:
             secretName: heybot-humor-secret
         - name: scan-results-storage
           persistentVolumeClaim:
-            claimName: "analysis-pvc"
+            claimName: "heybot-analysis-pvc"
