@@ -7,6 +7,7 @@ import tempfile
 import shutil
 import datetime
 from pathlib import Path
+import argparse
 
 import aiohttp
 from dotenv import load_dotenv
@@ -43,6 +44,7 @@ DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL', '').strip()
 MODEL_HUMOR_PATH = os.getenv('MODEL_HUMOR_PATH')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 CURRENT_COMMIT_ID = os.getenv('CURRENT_COMMIT_ID', 'latest')
+RUN_MODE = os.getenv('RUN_MODE', 'scan')
 
 # Debug-Ausgabe der Umgebungsvariablen
 logging.info(f"Umgebungsvariablen:")
@@ -594,64 +596,60 @@ async def send_discord(msg):
         logging.error(f"Error sending Discord message: {e}")
 
 
-async def analyze_specific_commit(commit_id):
-    """
-    Analysiert einen spezifischen Commit in einem temporären Verzeichnis.
-    """
-    # Erstellt ein temporäres Verzeichnis
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        
-        try:
-            logging.info(f"Starting analysis for commit {commit_id}")
-            
-            # Clone das Repository in das temporäre Verzeichnis
-            subprocess.run([
-                "git", "clone", "--depth", "1", str(BASE_DIR.parent), str(temp_path)
-            ], check=True, capture_output=True, text=True)
-            
-            # Wechsel zum gewünschten Commit
-            subprocess.run([
-                "git", "-C", str(temp_path), "checkout", commit_id
-            ], check=True, capture_output=True, text=True)
-            
-            # Installiere Dependencies
-            if (temp_path / "package.json").exists():
-                subprocess.run([
-                    "npm", "install",
-                    "--prefix", str(temp_path),
-                    "--ignore-scripts",  # Keine Build-Skripte ausführen
-                    "--omit=dev",  # Keine Dev-Dependencies (inkl. @types)
-                ], check=True, capture_output=True, text=True)
-            
-            if (temp_path / "requirements.txt").exists():
-                try:
-                    subprocess.run([
-                        "pip", "install",
-                        "-r", str(temp_path / "requirements.txt"),
-                        "--target", str(temp_path / "pip_modules")
-                    ], check=True, capture_output=True, text=True)
-                except subprocess.CalledProcessError as e:
-                    logging.warning(f"Pip install failed, continuing analysis: {e}")
-            
-            # Führt die Scans durch
-            run_trivy_scan(temp_path, commit_id)
-            run_owasp_scan(temp_path, commit_id)
-            
-            # Ladet und speichert die Ergebnisse
-            trivy_data, owasp_data = load_scan_results(commit_id)
-            result = save_analysis_json(trivy_data, owasp_data, commit_id)
-            
-            return result
-            
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Command failed: {str(e)}")
-            logging.error(f"Stdout: {e.stdout}")
-            logging.error(f"Stderr: {e.stderr}")
-            raise Exception(f"Command failed: {str(e)}")
-        except Exception as e:
-            logging.error(f"Analysis failed: {str(e)}")
-            raise
+async def analyze_specific_commit(commit_id, run_mode_arg='scan'):
+    """Führt die Analyse für einen spezifischen Commit durch."""
+    logging.info(f"Starting security analysis for commit {commit_id} with mode: {run_mode_arg}")
+
+    trivy_output_file = ANALYSIS_DIR / f"trivy-{commit_id}.json"
+    owasp_output_file = ANALYSIS_DIR / f"owasp-{commit_id}.json"
+
+    # Verwende einen temporären Ordner für die Analyse
+    with tempfile.TemporaryDirectory() as temp_dir_str:
+        temp_dir = Path(temp_dir_str)
+        shutil.copytree(BASE_DIR, temp_dir, dirs_exist_ok=True)
+
+        if run_mode_arg == 'scan':
+            logging.info(f"Running in 'scan' mode. Performing Trivy and OWASP scans.")
+            # Führe Scans durch
+            run_trivy_scan(temp_dir, commit_id)
+            run_owasp_scan(temp_dir, commit_id)
+        elif run_mode_arg == 'serve':
+            logging.info(f"Running in 'serve' mode. Assuming scan results exist at {ANALYSIS_DIR}.")
+            # Check if files copied by start.sh exist, log warning if not, but proceed.
+            # The API/serving part should handle missing files gracefully or report based on what's available.
+            if not trivy_output_file.exists():
+                logging.warning(f"Serve mode: Expected Trivy results {trivy_output_file} not found in PV.")
+            if not owasp_output_file.exists():
+                logging.warning(f"Serve mode: Expected OWASP results {owasp_output_file} not found in PV.")
+        else:
+            logging.error(f"Unknown run mode: {run_mode_arg}. Defaulting to no scans.")
+
+
+    # Lade (möglicherweise vorhandene oder gerade erstellte) Scan-Ergebnisse
+    trivy_data, owasp_data = load_scan_results(f"trivy-{commit_id}.json")
+    result = save_analysis_json(trivy_data, owasp_data, commit_id)
+
+    # Erstellt einen strukturierten Prompt mit den Scan-Ergebnissen
+    prompt = build_prompt_with_logs(trivy_data, owasp_data)
+    
+    # Generiert den Sicherheitsbericht mit DeepSeek
+    security_report = await send_prompt_to_deepseek(prompt)
+    
+    # Speichert den Bericht
+    save_message_to_file(security_report)
+
+    # Sendet den Bericht an Discord, falls ein Webhook konfiguriert ist
+    if run_mode_arg == 'scan' and DISCORD_WEBHOOK_URL and security_report:
+        logging.info("Scan mode: Sending analysis summary to Discord.")
+        await send_discord(security_report)
+    elif run_mode_arg == 'serve':
+        logging.info("Serve mode: Skipping Discord notification from main execution block.")
+        # Here you would typically start an API server if main.py is responsible for it.
+        # For now, it will just complete if no server is started.
+        # If api_server.py is separate and called by start.sh, this is fine.
+        logging.info("Serve mode operations complete in main.py. If an API server is used, it should be running.")
+
+    return result, security_report
 
 
 async def get_commit_analysis(commit_id):
@@ -674,41 +672,51 @@ async def get_commit_analysis(commit_id):
 
 # Main entry
 async def main():
-    try:
-        logging.info("Starting security analysis")
+    """Hauptfunktion zur Orchestrierung der Analyse und Benachrichtigung."""
+    # Setup argparse
+    parser = argparse.ArgumentParser(description="HeyBot Security Scanner and Server.")
+    parser.add_argument('--mode', type=str, default=os.getenv('RUN_MODE', 'scan'), choices=['scan', 'serve'],
+                        help="Run mode: 'scan' to perform scans, 'serve' to skip scans and serve existing results.")
+    args = parser.parse_args()
 
-        # Das zu scannende Verzeichnis ist /app, wo der Code im Container liegt
-        scan_target_path = Path("/app")
-            
-        # Führt Analyse für aktuellen Commit durch
-        trivy_file = run_trivy_scan(scan_target_path, CURRENT_COMMIT_ID)
-        owasp_file = run_owasp_scan(scan_target_path, CURRENT_COMMIT_ID)
-            
-        # Lädt die Scan-Ergebnisse
-        trivy_data, owasp_data = load_scan_results(CURRENT_COMMIT_ID)
-            
-        # Speichert Ergebnisse für Frontend
-        save_analysis_json(trivy_data, owasp_data, CURRENT_COMMIT_ID)
+    logging.info(f"HeyBot main started with RUN_MODE: {args.mode}")
 
-        # Erstellt einen strukturierten Prompt mit den Scan-Ergebnissen
-        prompt = build_prompt_with_logs(trivy_data, owasp_data)
-            
-        # Generiert den Sicherheitsbericht mit DeepSeek
-        security_report = await send_prompt_to_deepseek(prompt)
-            
-        # Speichert den Bericht
-        save_message_to_file(security_report)
-            
-        # Sendet den Bericht an Discord, falls ein Webhook konfiguriert ist
-        if DISCORD_WEBHOOK_URL:
-            await send_discord(security_report)
-                
-        logging.info("Security analysis completed successfully")
-                
-    except Exception as e:
-        logging.error(f"Fehler in main(): {e}")
-        raise
+    # Verwende CURRENT_COMMIT_ID aus der Umgebungsvariable
+    commit_id_to_analyze = CURRENT_COMMIT_ID
+    
+    # Führe die Analyse für den aktuellen Commit durch (oder lade vorhandene Ergebnisse im Serve-Modus)
+    analysis_summary, discord_message_content = await analyze_specific_commit(commit_id_to_analyze, args.mode)
 
+    # Speichere die Analyseergebnisse (das passiert auch im Serve-Modus, um latest.json zu aktualisieren)
+    # This might need adjustment if save_analysis_json should also be skipped in serve mode for some files.
+    # For now, let it update latest.json based on what's in ANALYSIS_DIR.
+    trivy_results_for_save, owasp_results_for_save = load_scan_results(f"trivy-{commit_id_to_analyze}.json")
+    save_analysis_json(trivy_results_for_save, owasp_results_for_save, commit_id_to_analyze)
+    logging.info(f"Analysis results saved as latest for commit {commit_id_to_analyze}")
+
+
+    if args.mode == 'scan' and DISCORD_WEBHOOK_URL and discord_message_content:
+        logging.info("Scan mode: Sending analysis summary to Discord.")
+        await send_discord(discord_message_content)
+    elif args.mode == 'serve':
+        logging.info("Serve mode: Skipping Discord notification from main execution block.")
+        # Here you would typically start an API server if main.py is responsible for it.
+        # For now, it will just complete if no server is started.
+        # If api_server.py is separate and called by start.sh, this is fine.
+        logging.info("Serve mode operations complete in main.py. If an API server is used, it should be running.")
+
+
+    # Example of how you might start a Flask/FastAPI server if it were part of this script
+    # if args.mode == 'serve':
+    #   from api_server import app as flask_app # Assuming api_server.py defines a Flask app
+    #   import uvicorn # or from hypercorn.asyncio import serve
+    #   logging.info("Starting API server...")
+    #   # Example for FastAPI with uvicorn:
+    #   # uvicorn.run(flask_app, host="0.0.0.0", port=8000) 
+    #   # For Flask with a production server like gunicorn, start.sh would typically use gunicorn to run api_server:app
 
 if __name__ == "__main__":
+    logging.info(f"HeyBot __main__ execution started.")
+    # Lade .env, falls vorhanden (nützlich für lokale Entwicklung)
+    load_dotenv(Path(__file__).parent / ".env")
     asyncio.run(main())

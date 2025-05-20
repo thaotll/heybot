@@ -21,8 +21,9 @@ else
 fi
 
 # 3) Bots nacheinander starten
-echo "▶️ Running main.py (likely to start api_server and serve results from $PV_ANALYSIS_DIR)..."
-python3 /app/main.py
+echo "▶️ Running main.py in serve mode (should use results from $PV_ANALYSIS_DIR)..."
+# Pass --mode serve to instruct main.py to skip scans
+python3 /app/main.py --mode serve
 
 # 4) Container am Leben halten (optional, wenn nötig)
 # sleep infinity.
