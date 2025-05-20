@@ -13,7 +13,15 @@ const nextConfig = {
     return [
       {
         source: '/api/security-analysis/:path*',
-        destination: 'http://localhost:8000/security-analysis/:path*',
+        destination: 'http://localhost:8080/security-analysis/:path*',
+      },
+      {
+        source: '/deepseek-message/:path*',
+        destination: 'http://localhost:8080/deepseek-message/:path*',
+      },
+      {
+        source: '/api/commits',
+        destination: 'http://localhost:8080/security-analysis/latest',
       },
     ]
   },

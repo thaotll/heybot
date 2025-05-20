@@ -8,7 +8,9 @@ export function DeepSeekMessage() {
   useEffect(() => {
     const fetchMessage = async () => {
       try {
-        const res = await fetch("http://localhost:8000/deepseek-message")
+        // console.log("Fetching DeepSeek message..."); // Uncomment for debugging
+        // const res = await fetch("/api/deepseek-message"); // If using a proxy via next.config.mjs
+        const res = await fetch("http://localhost:8080/deepseek-message") // UPDATED PORT
         const data = await res.json()
         setMessage(data.message)
       } catch (error) {

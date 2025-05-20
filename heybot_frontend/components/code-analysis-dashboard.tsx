@@ -120,6 +120,7 @@ function CodeAnalysisDashboard() {
       
       setRefreshing(true)
       const result = await fetchLatestAnalyses(forceRefresh)
+      console.log("Data received by CodeAnalysisDashboard from fetchLatestAnalyses:", JSON.stringify(result.analyses, null, 2));
       setAnalyses(result.analyses)
       
       setRateLimitWarning(result.rateLimitInfo || null)

@@ -34,6 +34,30 @@ jobs:
       - name: Install Python dependencies for scanning script
         run: pip install -r app/requirements.txt
 
+      - name: Set up Java (Temurin) for OWASP Dependency-Check
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17' # Or a version compatible with the latest dependency-check
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Install OWASP Dependency-Check
+        run: |
+          DC_VERSION="9.2.0" # Specify a recent version
+          wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
+          unzip dependency-check-${DC_VERSION}-release.zip
+          echo "${{ github.workspace }}/dependency-check/bin" >> $GITHUB_PATH
+          # Verify installation (optional)
+          dependency-check --version
+
       - name: Create directory for CI scan results
         run: mkdir -p ${{ env.CI_SCAN_OUTPUT_DIR }}
 
