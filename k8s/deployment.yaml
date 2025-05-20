@@ -28,7 +28,7 @@ spec:
       serviceAccountName: heybot
       containers:
         - name: heybot
-          image: "ghcr.io/thaotll/heybot-with-trivy-output:974eef2d498b0aa3a1a1cd1ca70f4216398cdc21"
+          image: "ghcr.io/thaotll/heybot-with-trivy-output:72b8b07439de7f32a0f2fa358dcfc9150d61c78f"
           imagePullPolicy: Always
           ports:
             - name: http
