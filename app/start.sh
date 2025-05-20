@@ -20,10 +20,22 @@ else
   echo "⚠️ No pre-generated scan results found in $PRE_GENERATED_SCANS_DIR or directory is empty."
 fi
 
-# 3) Bots nacheinander starten
+# Run main.py in serve mode to prepare/validate data from PV
+# This script will now exit after completing its tasks in 'serve' mode.
 echo "▶️ Running main.py in serve mode (should use results from $PV_ANALYSIS_DIR)..."
-# Pass --mode serve to instruct main.py to skip scans
-python3 /app/main.py --mode serve
+python3 /app/main.py --mode serve 
 
-# 4) Container am Leben halten (optional, wenn nötig)
-# sleep infinity.
+# Check the exit code of main.py. If it failed, we might not want to start the server.
+if [ $? -ne 0 ]; then
+  echo "❌ main.py --mode serve failed. Exiting without starting API server."
+  exit 1
+fi
+
+# NOW, start the FastAPI server as the main long-running process
+# It will serve data that main.py has ensured is on the PV.
+echo "🚀 Starting FastAPI server (api_server.py) on port 3000..."
+exec uvicorn api_server:app --host 0.0.0.0 --port 3000 --log-level info
+
+# The 'exec' command replaces the shell process with uvicorn,
+# ensuring uvicorn is the main process (PID 1 if it's the only command after this point)
+# and receives signals correctly from Kubernetes.
