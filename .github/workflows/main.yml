@@ -55,8 +55,6 @@ jobs:
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
           unzip dependency-check-${DC_VERSION}-release.zip
           echo "${{ github.workspace }}/dependency-check/bin" >> $GITHUB_PATH
-          # Verify installation (optional)
-          dependency-check --version
 
       - name: Create directory for CI scan results
         run: mkdir -p ${{ env.CI_SCAN_OUTPUT_DIR }}
