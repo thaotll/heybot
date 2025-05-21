@@ -815,55 +815,69 @@ async def get_commit_analysis(commit_id):
 
 # Main entry
 async def main():
-    """Hauptfunktion zur Orchestrierung der Analyse und Benachrichtigung."""
-    # Setup argparse
-    parser = argparse.ArgumentParser(description="HeyBot Security Scanner and Server.")
-    parser.add_argument('--mode', type=str, default=os.getenv('RUN_MODE', 'scan'), choices=['scan', 'serve'],
-                        help="Run mode: 'scan' to perform scans, 'serve' to skip scans and primarily rely on API serving existing results.")
+    """Hauptfunktion zum Ausführen von Scan oder Server-Modus."""
+    logging.info("HeyBot __main__ execution started.")
+    
+    parser = argparse.ArgumentParser(description="HeyBot Security Scanner")
+    parser.add_argument("--mode", type=str, choices=['scan', 'serve'], default='scan', 
+                        help="Run mode: 'scan' to perform security analysis, 'serve' to run in server mode (placeholder).")
+    parser.add_argument("--commit-id", type=str, default=None, 
+                        help="Specific commit ID to analyze. If not provided, defaults to CURRENT_COMMIT_ID env var or git rev-parse HEAD.")
+    
     args = parser.parse_args()
 
-    logging.info(f"HeyBot main started with RUN_MODE: {args.mode}")
+    # Determine the commit ID to analyze
+    # Priority: command-line arg -> CURRENT_COMMIT_ID env -> git rev-parse
+    commit_id_to_analyze = args.commit_id
+    if not commit_id_to_analyze:
+        commit_id_to_analyze = os.getenv('CURRENT_COMMIT_ID')
+    if not commit_id_to_analyze:
+        try:
+            commit_id_to_analyze = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+        except Exception as e:
+            logging.warning(f"Could not determine commit ID from git: {e}. Falling back to 'latest'.")
+            commit_id_to_analyze = "latest" # Fallback if git fails
 
-    # Verwende CURRENT_COMMIT_ID aus der Umgebungsvariable, default auf 'latest'
-    commit_id_to_process = os.getenv('CURRENT_COMMIT_ID', 'latest')
-    if not commit_id_to_process:
-        logging.error("CURRENT_COMMIT_ID environment variable is not set and no default was effective. Exiting.")
-        return
-    
+    if not commit_id_to_analyze: # Final fallback if all else fails
+        logging.error("CRITICAL: Commit ID could not be determined. Please provide --commit-id or ensure git is available / CURRENT_COMMIT_ID is set.")
+        return # Exit if no commit ID
+
+    logging.info(f"Selected commit ID for analysis: {commit_id_to_analyze}")
+
     if args.mode == 'scan':
-        logging.info(f"Running in 'scan' mode for commit: {commit_id_to_process}.")
-        # analyze_specific_commit will run scans, generate deepseek summary, save it (including as latest_summary.json if commit_id_to_process matches CURRENT_COMMIT_ID from env),
-        # and send to discord.
-        persisted_summary_object, legacy_code_analysis_object = await analyze_specific_commit(commit_id_to_process, 'scan')
+        logging.info(f"Running in SCAN mode for commit: {commit_id_to_analyze}")
+        # Ensure analyze_specific_commit uses this resolved commit_id
+        analysis_result, legacy_report_data = await analyze_specific_commit(commit_id_to_analyze, run_mode_arg='scan')
         
-        if persisted_summary_object:
-            logging.info(f"Scan and summary generation complete for {commit_id_to_process}. Summary object created.")
-            # The discord notification is handled within analyze_specific_commit for scan mode.
+        if analysis_result:
+            logging.info(f"Scan completed. Summary for {commit_id_to_analyze} has been saved.")
+            # Optionally, print the summary or part of it
+            # logging.info(json.dumps(analysis_result, indent=2))
         else:
-            logging.warning(f"Scan mode completed for {commit_id_to_process}, but no summary was persisted (check logs for errors).")
+            logging.error(f"Scan for commit {commit_id_to_analyze} did not produce a result.")
 
     elif args.mode == 'serve':
-        logging.info(f"Running in 'serve' mode. API server should be started by an external process (e.g., start.sh using uvicorn).")
-        logging.info("This main.py execution in 'serve' mode will not perform scans or start the server itself.")
-        # In 'serve' mode, analyze_specific_commit is not called from main to generate new reports.
-        # The API handlers (api_server.py) will use get_commit_analysis to load persisted data.
-        # 'latest_summary.json' should have been created by a previous 'scan' mode run.
-        pass # No specific actions for main() in serve mode related to analysis processing.
+        logging.info("Running in SERVE mode.")
+        # In 'serve' mode, we expect data to be on the PV.
+        # The main.py script, when run with --mode serve by start.sh, 
+        # can perform checks or pre-processing if needed.
+        # For now, it mainly ensures the ANALYSIS_DIR is used.
+        
+        # Example: Check if latest_summary.json exists
+        latest_summary_path = ANALYSIS_DIR / "latest_summary.json"
+        if latest_summary_path.exists():
+            logging.info(f"'serve' mode: Found {latest_summary_path}")
+            # Potentially load and validate it or other summaries.
+            # For now, just confirm it's there.
+        else:
+            logging.warning(f"'serve' mode: {latest_summary_path} not found. API server might not have latest data.")
+            # This might be okay if the PV is initially empty and gets populated by scans later
+            # or if specific commit_id files are the primary concern.
 
-    logging.info(f"HeyBot main processing finished for mode: {args.mode} and commit: {commit_id_to_process}.")
-
-
-    # Example of how you might start a Flask/FastAPI server if it were part of this script (CURRENTLY HANDLED BY start.sh)
-    # if args.mode == 'serve':
-    #   from api_server import app as flask_app # Assuming api_server.py defines a Flask app
-    #   import uvicorn # or from hypercorn.asyncio import serve
-    #   logging.info("Starting API server...")
-    #   # Example for FastAPI with uvicorn:
-    #   # uvicorn.run(flask_app, host="0.0.0.0", port=8000) 
-    #   # For Flask with a production server like gunicorn, start.sh would typically use gunicorn to run api_server:app
+        # The actual serving is done by api_server.py, started by start.sh
+        # This 'serve' mode in main.py is more for pre-flight checks or data prep on the PV.
+        logging.info("'serve' mode tasks in main.py complete. API server will handle requests.")
+        pass
 
 if __name__ == "__main__":
-    logging.info(f"HeyBot __main__ execution started.")
-    # Lade .env, falls vorhanden (nützlich für lokale Entwicklung)
-    load_dotenv(Path(__file__).parent / ".env")
     asyncio.run(main())
