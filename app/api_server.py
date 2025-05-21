@@ -108,9 +108,19 @@ async def get_latest_analysis():
     Liefert die Sicherheitsanalyse des neuesten Commits.
     """
     try:
-        latest_file = BASE_DIR / "analysis" / "latest.json"
-        if not latest_file.exists():
-            raise HTTPException(status_code=404, detail="Keine aktuelle Analyse verfügbar")
-        return json.loads(latest_file.read_text())
+        analysis_data = await get_commit_analysis("latest")
+        if analysis_data is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Keine aktuelle Analyse (latest_summary.json) gefunden."
+            )
+        return analysis_data # get_commit_analysis already returns a dictionary
+
+    except HTTPException as http_exc: # Re-raise HTTPException to preserve status code and detail
+        raise http_exc
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Error fetching latest analysis: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Serverfehler beim Abrufen der neuesten Analyse: {str(e)}"
+        )

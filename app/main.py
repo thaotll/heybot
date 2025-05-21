@@ -78,29 +78,33 @@ def save_commit_id(cid):
 
 def run_trivy_scan(temp_dir, commit_id):
     """
-    Führt den Trivy-Scan in einem temporären Verzeichnis durch.
+    Führt den Trivy-Scan in einem temporären Verzeichnis durch und gibt die Ergebnisse als Diktionär zurück.
     """
-    output_file = ANALYSIS_DIR / f"trivy-{commit_id}.json"
-    
+    # Verwende einen temporären Dateinamen für die Trivy-Ausgabe
+    # tempfile.NamedTemporaryFile erstellt eine Datei, die nach dem Schließen automatisch gelöscht wird.
+    # Wir brauchen den Namen, um ihn an Trivy zu übergeben, und lesen ihn dann, bevor er gelöscht wird.
+    trivy_data = {"Results": []} # Standardwert bei Fehlern
+
     try:
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as tmp_output_file_obj:
+            tmp_output_file_name = tmp_output_file_obj.name
+        
         logging.info(f"Starting Trivy scan for commit {commit_id}")
         logging.info(f"Scanning directory: {temp_dir}")
-        logging.info(f"Output file: {output_file}")
+        logging.info(f"Temporary Trivy output file: {tmp_output_file_name}")
         
-        # Trivy-Kommando vorbereiten
         trivy_cmd = [
             "trivy", "fs",
             "--format", "json",
             "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
             "--no-progress",
-            "--scanners", "vuln,secret,config",  # Aktiviere alle Scanner
-            "--output", str(output_file),
+            "--scanners", "vuln,secret,config",
+            "--output", tmp_output_file_name, # Ausgabe in temporäre Datei
             str(temp_dir)
         ]
         
         logging.info(f"Running Trivy command: {' '.join(trivy_cmd)}")
         
-        # Live-Logging für Trivy-Ausgabe
         process = subprocess.Popen(
             trivy_cmd,
             stdout=subprocess.PIPE,
@@ -108,7 +112,6 @@ def run_trivy_scan(temp_dir, commit_id):
             text=True
         )
         
-        # Lese und logge Trivy-Ausgabe in Echtzeit
         for line in process.stdout:
             line = line.strip()
             if "error" in line.lower() or "fatal" in line.lower():
@@ -118,120 +121,150 @@ def run_trivy_scan(temp_dir, commit_id):
             else:
                 logging.info(f"Trivy: {line}")
         
-        # Warte auf Prozessende
         return_code = process.wait()
-        if return_code != 0:
-            logging.error(f"Trivy scan failed with return code {return_code}")
-        else:
+
+        if return_code == 0:
             logging.info(f"Trivy scan completed for commit {commit_id}")
-            
-            # Prüfe, ob die Ausgabedatei existiert und nicht leer ist
-            if output_file.exists():
-                file_size = output_file.stat().st_size
-                logging.info(f"Trivy output file size: {file_size} bytes")
-                if file_size == 0:
-                    logging.warning("Trivy output file is empty")
+            # Lese die Ergebnisse aus der temporären Datei
+            if Path(tmp_output_file_name).exists():
+                file_size = Path(tmp_output_file_name).stat().st_size
+                if file_size > 0:
+                    with open(tmp_output_file_name, 'r') as f:
+                        trivy_data = json.load(f)
+                    logging.info(f"Successfully loaded Trivy results from {tmp_output_file_name}")
+                else:
+                    logging.warning(f"Trivy temporary output file {tmp_output_file_name} is empty.")
             else:
-                logging.error("Trivy output file was not created")
-        
+                logging.error(f"Trivy temporary output file {tmp_output_file_name} was not created.")
+        else:
+            logging.error(f"Trivy scan failed with return code {return_code}")
+            # trivy_data bleibt {"Results": []}
+            
     except subprocess.CalledProcessError as e:
         logging.error(f"Trivy scan failed: {str(e)}")
-        logging.error(f"Stdout: {e.stdout}")
-        logging.error(f"Stderr: {e.stderr}")
-        # Erstellt eine leere Ergebnisdatei
-        output_file.write_text(json.dumps({"Results": []}))
+        if hasattr(e, 'stdout') and e.stdout: logging.error(f"Stdout: {e.stdout}")
+        if hasattr(e, 'stderr') and e.stderr: logging.error(f"Stderr: {e.stderr}")
+        # trivy_data bleibt {"Results": []}
     except Exception as e:
         logging.error(f"Unexpected error during Trivy scan: {str(e)}")
-        output_file.write_text(json.dumps({"Results": []}))
-    
-    return output_file
+        # trivy_data bleibt {"Results": []}
+    finally:
+        # Stelle sicher, dass die temporäre Datei gelöscht wird, falls sie noch existiert
+        if 'tmp_output_file_name' in locals() and Path(tmp_output_file_name).exists():
+            try:
+                Path(tmp_output_file_name).unlink()
+                logging.info(f"Cleaned up temporary Trivy output file: {tmp_output_file_name}")
+            except OSError as e_unlink:
+                logging.error(f"Error deleting temporary Trivy file {tmp_output_file_name}: {e_unlink}")
+                
+    return trivy_data
 
 
 def run_owasp_scan(temp_dir, commit_id):
     """
-    Führt den OWASP-Scan in einem temporären Verzeichnis durch.
+    Führt den OWASP-Scan in einem temporären Verzeichnis durch und gibt die Ergebnisse als Diktionär zurück.
+    Die OWASP-Datenbank wird weiterhin im ANALYSIS_DIR gespeichert.
     """
-    output_file = ANALYSIS_DIR / f"owasp-{commit_id}.json"
+    owasp_data = {"dependencies": []} # Standardwert bei Fehlern
     
-    try:
-        # Erstellt ein Verzeichnis für die OWASP-Datenbank
+    # Temporäres Verzeichnis für die OWASP-Ausgabe dieser spezifischen Analyse
+    # Dies ist getrennt vom gescannten `temp_dir`, das den Quellcode enthält.
+    with tempfile.TemporaryDirectory(prefix="owasp_output_") as owasp_output_temp_dir_str:
+        owasp_output_temp_dir = Path(owasp_output_temp_dir_str)
+        # OWASP wird seine JSON-Datei in dieses temporäre Verzeichnis schreiben.
+        # Der Name der Datei ist normalerweise dependency-check-report.json oder ähnlich.
+        # Wir müssen sie nach dem Scan finden.
+        
+        # OWASP-Datenbank-Verzeichnis (bleibt im ANALYSIS_DIR für Persistenz)
         data_dir = ANALYSIS_DIR / "owasp-data"
         data_dir.mkdir(exist_ok=True)
         
-        logging.info(f"Starting OWASP scan for commit {commit_id}")
-        logging.info(f"OWASP database directory: {data_dir}")
-        logging.info(f"Scanning directory: {temp_dir}")
-        
-        # OWASP-Kommando vorbereiten
-        owasp_cmd = [
-            "dependency-check",
-            "--project", "heybot",
-            "--scan", str(temp_dir),
-            "--format", "JSON",
-            "--out", str(output_file),
-            "--failOnCVSS", "11",  # Nie fehlschlagen (Großbuchstaben CVSS)
-            "--nodeAuditSkipDevDependencies", "false",  # Auch dev dependencies scannen
-            "--data", str(data_dir),  # Persistente Datenbank
-            "--log", "info"  # Mehr Logging-Informationen
-        ]
-        
-        logging.info(f"Running OWASP command: {' '.join(owasp_cmd)}")
-        
-        # Live-Logging für OWASP-Ausgabe
-        process = subprocess.Popen(
-            owasp_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env={**os.environ}
-        )
-        
-        # Lese und logge OWASP-Ausgabe in Echtzeit
-        for line in process.stdout:
-            line = line.strip()
-            if "ERROR" in line or "FATAL" in line:
-                logging.error(f"OWASP: {line}")
-            elif "WARN" in line:
-                logging.warning(f"OWASP: {line}")
-            elif "INFO" in line and ("Progress" in line or "Download" in line or "Processing" in line or "Checking" in line):
-                logging.info(f"OWASP Progress: {line}")
-        
-        # Warte auf Prozessende
-        return_code = process.wait()
-        if return_code != 0:
-            logging.error(f"OWASP scan failed with return code {return_code}")
-        else:
-            logging.info(f"OWASP scan completed for commit {commit_id}")
-
-            # Prüfen, ob die Zieldatei existiert. Falls nicht, alternative Standardnamen versuchen,
-            # wie sie von dependency-check häufig verwendet werden (z. B. dependency-check.json oder
-            # dependency-check-[commit_id].json). Falls gefunden, wird die Datei umbenannt.
-
-            alternative_filename_pattern = f"dependency-check-{commit_id}.json"
-            alternative_file_path = ANALYSIS_DIR / alternative_filename_pattern
-            default_dc_json = ANALYSIS_DIR / "dependency-check.json" # Fallback, falls kein Commit-ID im Namen
-
-            if not output_file.exists():
-                if alternative_file_path.exists():
-                    logging.info(f"Renaming {alternative_file_path} to {output_file}")
-                    shutil.move(str(alternative_file_path), str(output_file))
-                elif default_dc_json.exists():
-                    logging.info(f"Renaming {default_dc_json} to {output_file}")
-                    shutil.move(str(default_dc_json), str(output_file))
-                else:
-                    logging.warning(f"Expected OWASP output file {output_file} not found, and no known alternatives detected.")
+        try:
+            logging.info(f"Starting OWASP scan for commit {commit_id}")
+            logging.info(f"OWASP database directory: {data_dir}")
+            logging.info(f"Scanning directory (source code): {temp_dir}")
+            logging.info(f"Temporary directory for OWASP JSON report: {owasp_output_temp_dir}")
             
-    except subprocess.CalledProcessError as e:
-        logging.error(f"OWASP scan failed: {str(e)}")
-        logging.error(f"Stdout: {e.stdout}")
-        logging.error(f"Stderr: {e.stderr}")
-        # Erstellt eine leere Ergebnisdatei
-        output_file.write_text(json.dumps({"dependencies": []}))
-    except Exception as e:
-        logging.error(f"Unexpected error during OWASP scan: {str(e)}")
-        output_file.write_text(json.dumps({"dependencies": []}))
-    
-    return output_file
+            owasp_cmd = [
+                "dependency-check",
+                "--project", f"heybot-{commit_id}", # Eindeutiger Projektname pro Scan
+                "--scan", str(temp_dir),
+                "--format", "JSON",
+                "--out", str(owasp_output_temp_dir), # Ausgabe in das temporäre Ausgabeverzeichnis
+                "--failOnCVSS", "11",
+                "--nodeAuditSkipDevDependencies", "false",
+                "--data", str(data_dir),
+                "--log", "info"
+            ]
+            
+            logging.info(f"Running OWASP command: {' '.join(owasp_cmd)}")
+            
+            process = subprocess.Popen(
+                owasp_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env={**os.environ}
+            )
+            
+            for line in process.stdout:
+                line = line.strip()
+                if "ERROR" in line or "FATAL" in line:
+                    logging.error(f"OWASP: {line}")
+                elif "WARN" in line:
+                    logging.warning(f"OWASP: {line}")
+                elif "INFO" in line and ("Progress" in line or "Download" in line or "Processing" in line or "Checking" in line):
+                    logging.info(f"OWASP Progress: {line}")
+            
+            return_code = process.wait()
+
+            if return_code == 0:
+                logging.info(f"OWASP scan completed for commit {commit_id}")
+                # Finde die generierte JSON-Datei im temporären Ausgabeverzeichnis
+                # Übliche Namen: dependency-check-report.json
+                report_file_path = owasp_output_temp_dir / "dependency-check-report.json"
+
+                if not report_file_path.exists():
+                    # Fallback: Manchmal wird sie auch einfach als dependency-check.json benannt
+                    report_file_path_alt = owasp_output_temp_dir / "dependency-check.json"
+                    if report_file_path_alt.exists():
+                        report_file_path = report_file_path_alt
+                    else:
+                        # Versuche, nach einer beliebigen .json-Datei zu suchen, falls die obigen nicht existieren
+                        json_files = list(owasp_output_temp_dir.glob('*.json'))
+                        if json_files:
+                            report_file_path = json_files[0] # Nimm die erste gefundene
+                            logging.info(f"Found OWASP report via glob: {report_file_path}")
+                        else:
+                             logging.error(f"OWASP JSON report not found in {owasp_output_temp_dir}. Expected dependency-check-report.json or similar.")
+                             # owasp_data bleibt {"dependencies": []}
+                             return owasp_data # Frühzeitiger Ausstieg, da keine Datei zum Lesen vorhanden ist
+
+                if report_file_path.exists():
+                    file_size = report_file_path.stat().st_size
+                    if file_size > 0:
+                        with open(report_file_path, 'r') as f:
+                            owasp_data = json.load(f)
+                        logging.info(f"Successfully loaded OWASP results from {report_file_path}")
+                    else:
+                        logging.warning(f"OWASP report file {report_file_path} is empty.")
+                # Die temporäre Datei und das Verzeichnis werden durch den with-Kontext von TemporaryDirectory automatisch bereinigt.
+
+            else:
+                logging.error(f"OWASP scan failed with return code {return_code}")
+                # owasp_data bleibt {"dependencies": []}
+
+        except subprocess.CalledProcessError as e:
+            logging.error(f"OWASP scan failed: {str(e)}")
+            if hasattr(e, 'stdout') and e.stdout: logging.error(f"Stdout: {e.stdout}")
+            if hasattr(e, 'stderr') and e.stderr: logging.error(f"Stderr: {e.stderr}")
+            # owasp_data bleibt {"dependencies": []}
+        except Exception as e:
+            logging.error(f"Unexpected error during OWASP scan: {str(e)}")
+            # owasp_data bleibt {"dependencies": []}
+        # Das temporäre Verzeichnis owasp_output_temp_dir wird hier automatisch gelöscht.
+
+    return owasp_data
 
 
 def load_scan_results(commit_id):
@@ -307,6 +340,74 @@ def summarize_owasp_results(dependencies):
     return summary
 
 
+def save_deepseek_summary(commit_id, deepseek_message_content, trivy_data, owasp_data):
+    """
+    Speichert die DeepSeek-Zusammenfassung und die Zählungen der Schwachstellen.
+    """
+    logging.info(f"Saving DeepSeek summary for commit {commit_id}")
+    
+    trivy_summary_counts = summarize_trivy_results(trivy_data.get("Results", []))
+    owasp_summary_counts = summarize_owasp_results(owasp_data.get("dependencies", []))
+
+    # Determine overall status based on summaries for the new object
+    overall_status_for_summary = "success"
+    if trivy_summary_counts.get("critical",0) > 0 or trivy_summary_counts.get("high",0) > 0 or \
+       owasp_summary_counts.get("critical",0) > 0 or owasp_summary_counts.get("high",0) > 0:
+        overall_status_for_summary = "error"
+    elif trivy_summary_counts.get("medium",0) > 0 or owasp_summary_counts.get("medium",0) > 0:
+        overall_status_for_summary = "warning"
+
+    # Placeholder for repository and branch - consider fetching from git or env
+    repo_name = "thaotll/heybot" 
+    branch_name = "main"
+    try:
+        # Attempt to get actual git info if in a git repo
+        git_branch_output = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], text=True, cwd=BASE_DIR).strip()
+        # For repo name, it's trickier, could parse from `git remote get-url origin`
+        # For simplicity, keeping placeholders if direct git commands are not robust enough here or not always applicable
+        if git_branch_output:
+            branch_name = git_branch_output
+    except Exception:
+        logging.warning("Could not determine git branch for summary, using placeholder.")
+
+
+    persisted_summary = {
+        "id": commit_id,
+        "commitId": commit_id,
+        "repository": repo_name, 
+        "branch": branch_name, 
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "status": overall_status_for_summary, # Overall status based on vuln counts
+        "deepseek_summary": deepseek_message_content,
+        "securityScansSummary": [
+            {
+                "tool": "trivy",
+                "vulnerabilities": trivy_summary_counts
+            },
+            {
+                "tool": "owasp",
+                "vulnerabilities": owasp_summary_counts
+            }
+        ]
+        # Add other fields from the original CodeAnalysis object if they are simple and useful for the frontend
+        # e.g., author, feedback (commit message) - these might need to be passed in or fetched.
+        # For now, keeping it focused on the DeepSeek summary and vuln counts.
+    }
+
+    summary_output_file = ANALYSIS_DIR / f"{commit_id}_summary.json"
+    summary_output_file.write_text(json.dumps(persisted_summary, indent=2))
+    logging.info(f"DeepSeek summary saved to {summary_output_file}")
+
+    # Update latest_summary.json if this is the current commit
+    current_commit_env = os.getenv('CURRENT_COMMIT_ID', 'latest') # Ensure latest is default if not set
+    if commit_id == current_commit_env:
+        latest_summary_file = ANALYSIS_DIR / "latest_summary.json"
+        latest_summary_file.write_text(json.dumps(persisted_summary, indent=2))
+        logging.info(f"DeepSeek summary also saved as {latest_summary_file}")
+        
+    return persisted_summary
+
+
 def save_analysis_json(trivy_data, owasp_data, commit_id):
     """
     Speichert die Analyseergebnisse im JSON-Format.
@@ -377,19 +478,6 @@ def save_analysis_json(trivy_data, owasp_data, commit_id):
             "services": 0
         }
     }
-    
-    # Speichert die Ergebnisse
-    output_file = ANALYSIS_DIR / f"{commit_id}.json"
-    output_file.write_text(json.dumps(analysis_result_full, indent=2))
-    logging.info(f"Analysis results saved to {output_file}")
-    
-    # Wenn es der aktuelle Commit ist, speichert auch als latest
-    # Ensure CURRENT_COMMIT_ID is defined and accessible here, might need to pass or get from env
-    current_commit_env = os.getenv('CURRENT_COMMIT_ID', None)
-    if commit_id == current_commit_env: # Use current_commit_env
-        latest_file = ANALYSIS_DIR / "latest.json"
-        latest_file.write_text(json.dumps(analysis_result_full, indent=2))
-        logging.info("Analysis results saved as latest")
     
     return analysis_result_full # Return the full object
 
@@ -624,97 +712,104 @@ async def send_discord(msg):
 
 
 async def analyze_specific_commit(commit_id, run_mode_arg='scan'):
-    """Führt die Analyse für einen spezifischen Commit durch."""
-    logging.info(f"Starting security analysis for commit {commit_id} with mode: {run_mode_arg}")
+    if run_mode_arg != 'scan':
+        logging.info(f"analyze_specific_commit called in non-scan mode ({run_mode_arg}) for {commit_id}. No actions taken by this function.")
+        # Return default/empty structures for compatibility if something in main() still expects them
+        # The second element should be the result of calling the modified save_analysis_json
+        return None, save_analysis_json({}, {}, commit_id) 
 
-    trivy_output_file = ANALYSIS_DIR / f"trivy-{commit_id}.json"
-    owasp_output_file = ANALYSIS_DIR / f"owasp-{commit_id}.json"
+    logging.info(f"Starting 'scan' mode security analysis for commit {commit_id}")
+
+    trivy_data = {} # Default
+    owasp_data = {} # Default
+    security_report_content = "Scan did not complete successfully or produced no actionable data."
+    persisted_summary = None
 
     # Verwende einen temporären Ordner für die Analyse
     with tempfile.TemporaryDirectory() as temp_dir_str:
         temp_dir = Path(temp_dir_str)
-        shutil.copytree(BASE_DIR, temp_dir, dirs_exist_ok=True)
+        try:
+            # Ignore common patterns that shouldn't be part of the scan, or could cause issues.
+            # Especially important to ignore 'analysis' to prevent recursion if BASE_DIR is cwd.
+            ignore_patterns = shutil.ignore_patterns('.git', '.idea', '__pycache__', 'node_modules', '.next', 'analysis', '*.tmp', '*.pyc', 'owasp-data')
+            shutil.copytree(BASE_DIR, temp_dir, dirs_exist_ok=True, ignore=ignore_patterns)
+            logging.info(f"Copied source from {BASE_DIR} to {temp_dir} for scanning, ignoring patterns.")
+        except Exception as e:
+            logging.error(f"Failed to copy source to temp dir for {commit_id}: {e}")
+            legacy_code_analysis = save_analysis_json({}, {}, commit_id) # Construct minimal old object
+            return None, legacy_code_analysis 
 
-        if run_mode_arg == 'scan':
-            logging.info(f"Running in 'scan' mode. Performing Trivy and OWASP scans.")
-            # Führe Scans durch
-            run_trivy_scan(temp_dir, commit_id)
-            run_owasp_scan(temp_dir, commit_id)
-        elif run_mode_arg == 'serve':
-            logging.info(f"Running in 'serve' mode. Assuming scan results exist at {ANALYSIS_DIR}.")
-            # Check if files copied by start.sh exist, log warning if not, but proceed.
-            # The API/serving part should handle missing files gracefully or report based on what's available.
-            if not trivy_output_file.exists():
-                logging.warning(f"Serve mode: Expected Trivy results {trivy_output_file} not found in PV.")
-            if not owasp_output_file.exists():
-                logging.warning(f"Serve mode: Expected OWASP results {owasp_output_file} not found in PV.")
-        else:
-            logging.error(f"Unknown run mode: {run_mode_arg}. Defaulting to no scans.")
+        logging.info(f"Running Trivy and OWASP scans in {temp_dir} for {commit_id}...")
+        trivy_data = run_trivy_scan(temp_dir, commit_id)
+        owasp_data = run_owasp_scan(temp_dir, commit_id)
 
+    # Generate DeepSeek report
+    # Check if scans actually returned something meaningful beyond default empty
+    # Check specifically for the keys that hold results, and if those keys have content.
+    trivy_has_results = trivy_data and trivy_data.get("Results") is not None and len(trivy_data.get("Results")) > 0
+    owasp_has_results = owasp_data and owasp_data.get("dependencies") is not None and len(owasp_data.get("dependencies")) > 0
 
-    # Lade (möglicherweise vorhandene oder gerade erstellte) Scan-Ergebnisse
-    trivy_data, owasp_data = load_scan_results(commit_id)
-    result = save_analysis_json(trivy_data, owasp_data, commit_id)
-
-    # Erstellt einen strukturierten Prompt mit den Scan-Ergebnissen
-    prompt = build_prompt_with_logs(trivy_data, owasp_data)
+    if trivy_has_results or owasp_has_results:
+        logging.info(f"Scans for {commit_id} produced data. Building prompt for DeepSeek.")
+        prompt = build_prompt_with_logs(trivy_data, owasp_data)
+        security_report_content = await send_prompt_to_deepseek(prompt)
+    else:
+        security_report_content = "Scans ran but returned no specific vulnerabilities or misconfigurations."
+        logging.info(f"Scans for {commit_id} returned no specific findings. Generating a clean bill of health message from DeepSeek.")
+        # Still generate a prompt for DeepSeek to get an "all clear" type message or handle empty results gracefully.
+        prompt = build_prompt_with_logs(trivy_data, owasp_data) # build_prompt_with_logs should handle empty inputs
+        security_report_content = await send_prompt_to_deepseek(prompt)
     
-    # Generiert den Sicherheitsbericht mit DeepSeek
-    security_report = await send_prompt_to_deepseek(prompt)
-    
-    # Speichert den Bericht
-    save_message_to_file(security_report)
+    # Speichert den Bericht lokal (Debugging)
+    save_message_to_file(security_report_content)
+
+    # Speichert die neue DeepSeek-Zusammenfassung persistent
+    persisted_summary = save_deepseek_summary(commit_id, security_report_content, trivy_data, owasp_data)
 
     # Sendet den Bericht an Discord, falls ein Webhook konfiguriert ist
-    if run_mode_arg == 'scan' and DISCORD_WEBHOOK_URL and security_report:
-        logging.info("Scan mode: Sending analysis summary to Discord.")
-        await send_discord(security_report)
-    elif run_mode_arg == 'serve':
-        logging.info("Serve mode: Skipping Discord notification from main execution block.")
-        # Here you would typically start an API server if main.py is responsible for it.
-        # For now, it will just complete if no server is started.
-        # If api_server.py is separate and called by start.sh, this is fine.
-        logging.info("Serve mode operations complete in main.py. If an API server is used, it should be running.")
-
-    return result, security_report
+    if DISCORD_WEBHOOK_URL and security_report_content:
+        # Check if the message is more than just a generic failure message before sending
+        if "Fehler bei der API-Anfrage an DeepSeek" not in security_report_content and \
+           "KI-Modell lieferte keine gültige Antwort" not in security_report_content:
+            logging.info(f"Scan mode: Sending analysis summary for {commit_id} to Discord.")
+            await send_discord(security_report_content)
+        else:
+            logging.warning(f"Skipping Discord notification for {commit_id} due to DeepSeek error in report content.")
+    
+    # Konstruiere das alte CodeAnalysis-Objekt (ohne Dateischreiben) für Rückwärtskompatibilität
+    legacy_code_analysis_object = save_analysis_json(trivy_data, owasp_data, commit_id)
+    
+    return persisted_summary, legacy_code_analysis_object
 
 
 async def get_commit_analysis(commit_id):
     """
     Holt die Analyseergebnisse für einen Commit.
-    Führt die Analyse durch, falls noch nicht vorhanden, und gibt NUR das Analyse-JSON (dict) zurück.
+    Sollte die neue '_summary.json'-Datei laden.
     """
-    analysis_file = ANALYSIS_DIR / f"{commit_id}.json"
+    summary_file_name = f"{commit_id}_summary.json"
+    analysis_file = ANALYSIS_DIR / summary_file_name
     
+    if commit_id == "latest": # Special handling for "latest"
+        analysis_file = ANALYSIS_DIR / "latest_summary.json"
+        logging.info(f"Attempting to load latest summary: {analysis_file}")
+    else:
+        logging.info(f"Attempting to load summary for commit {commit_id}: {analysis_file}")
+
     if not analysis_file.exists():
-        logging.info(f"No existing analysis for commit {commit_id}, running new analysis (will run in mode determined by caller of main.py)")
-        # analyze_specific_commit is called from main() with the correct mode.
-        # This path in get_commit_analysis implies we are likely in a 'serve' context from api_server,
-        # and the file wasn't found from the pre-generated/copied files.
-        # Re-running analyze_specific_commit here might be problematic if it tries to scan again.
-        # For now, let's assume if the file isn't there, we can't serve it for this specific commit ID endpoint.
-        # Or, we rely on analyze_specific_commit being smart due to args.mode set when main() was invoked.
-        
-        # The current main.py structure will have already run analyze_specific_commit in main() if mode is 'scan' or 'serve'.
-        # So, if analysis_file doesn't exist here, it truly means it wasn't generated or copied for this commit_id.
-        # We should NOT re-run intensive scans from an API call by default.
-        # The instance of main.py that is running the API server is already in 'serve' mode.
-        # analyze_specific_commit when called with mode='serve' will primarily load files.
-        # If it still doesn't find them, it returns data that leads to save_analysis_json creating a minimal report.
-
-        # Let's ensure that if we DO call analyze_specific_commit, we only return the analysis dictionary.
-        # However, the primary design is that main() already populated the PV, and this function just reads.
-        # If the file for a specific commit_id (other than 'latest') is missing, it should be a 404.
-
-        # For the /security-analysis/{commit_id} endpoint, if the .json file for that commit
-        # doesn't exist (because it wasn't the one processed by main() on startup), then we should return None.
-        logging.warning(f"Analysis file {analysis_file} not found. This specific commit might not have been processed on startup.")
-        return None # Explicitly return None if file for specific commit_id is not found.
+        logging.warning(f"Summary file {analysis_file} not found.")
+        # Optional: Fallback to old format if API needs to be very robust to old data?
+        # For now, sticking to the new format for this function.
+        # old_format_file = ANALYSIS_DIR / f"{commit_id}.json"
+        # if old_format_file.exists():
+        #     logging.warning(f"Found old format file {old_format_file}, but this function expects new summary format.")
+        return None 
     
     try:
+        logging.info(f"Loading summary from {analysis_file}")
         return json.loads(analysis_file.read_text())
     except Exception as e:
-        logging.error(f"Failed to load analysis for commit {commit_id}: {e}")
+        logging.error(f"Failed to load analysis summary for {analysis_file.stem}: {e}")
         return None
 
 
@@ -724,37 +819,41 @@ async def main():
     # Setup argparse
     parser = argparse.ArgumentParser(description="HeyBot Security Scanner and Server.")
     parser.add_argument('--mode', type=str, default=os.getenv('RUN_MODE', 'scan'), choices=['scan', 'serve'],
-                        help="Run mode: 'scan' to perform scans, 'serve' to skip scans and serve existing results.")
+                        help="Run mode: 'scan' to perform scans, 'serve' to skip scans and primarily rely on API serving existing results.")
     args = parser.parse_args()
 
     logging.info(f"HeyBot main started with RUN_MODE: {args.mode}")
 
-    # Verwende CURRENT_COMMIT_ID aus der Umgebungsvariable
-    commit_id_to_analyze = CURRENT_COMMIT_ID
+    # Verwende CURRENT_COMMIT_ID aus der Umgebungsvariable, default auf 'latest'
+    commit_id_to_process = os.getenv('CURRENT_COMMIT_ID', 'latest')
+    if not commit_id_to_process:
+        logging.error("CURRENT_COMMIT_ID environment variable is not set and no default was effective. Exiting.")
+        return
     
-    # Führe die Analyse für den aktuellen Commit durch (oder lade vorhandene Ergebnisse im Serve-Modus)
-    analysis_summary, discord_message_content = await analyze_specific_commit(commit_id_to_analyze, args.mode)
+    if args.mode == 'scan':
+        logging.info(f"Running in 'scan' mode for commit: {commit_id_to_process}.")
+        # analyze_specific_commit will run scans, generate deepseek summary, save it (including as latest_summary.json if commit_id_to_process matches CURRENT_COMMIT_ID from env),
+        # and send to discord.
+        persisted_summary_object, legacy_code_analysis_object = await analyze_specific_commit(commit_id_to_process, 'scan')
+        
+        if persisted_summary_object:
+            logging.info(f"Scan and summary generation complete for {commit_id_to_process}. Summary object created.")
+            # The discord notification is handled within analyze_specific_commit for scan mode.
+        else:
+            logging.warning(f"Scan mode completed for {commit_id_to_process}, but no summary was persisted (check logs for errors).")
 
-    # Speichere die Analyseergebnisse (das passiert auch im Serve-Modus, um latest.json zu aktualisieren)
-    # This might need adjustment if save_analysis_json should also be skipped in serve mode for some files.
-    # For now, let it update latest.json based on what's in ANALYSIS_DIR.
-    trivy_results_for_save, owasp_results_for_save = load_scan_results(commit_id_to_analyze)
-    save_analysis_json(trivy_results_for_save, owasp_results_for_save, commit_id_to_analyze)
-    logging.info(f"Analysis results saved as latest for commit {commit_id_to_analyze}")
-
-
-    if args.mode == 'scan' and DISCORD_WEBHOOK_URL and discord_message_content:
-        logging.info("Scan mode: Sending analysis summary to Discord.")
-        await send_discord(discord_message_content)
     elif args.mode == 'serve':
-        logging.info("Serve mode: Skipping Discord notification from main execution block.")
-        # Here you would typically start an API server if main.py is responsible for it.
-        # For now, it will just complete if no server is started.
-        # If api_server.py is separate and called by start.sh, this is fine.
-        logging.info("Serve mode operations complete in main.py. If an API server is used, it should be running.")
+        logging.info(f"Running in 'serve' mode. API server should be started by an external process (e.g., start.sh using uvicorn).")
+        logging.info("This main.py execution in 'serve' mode will not perform scans or start the server itself.")
+        # In 'serve' mode, analyze_specific_commit is not called from main to generate new reports.
+        # The API handlers (api_server.py) will use get_commit_analysis to load persisted data.
+        # 'latest_summary.json' should have been created by a previous 'scan' mode run.
+        pass # No specific actions for main() in serve mode related to analysis processing.
+
+    logging.info(f"HeyBot main processing finished for mode: {args.mode} and commit: {commit_id_to_process}.")
 
 
-    # Example of how you might start a Flask/FastAPI server if it were part of this script
+    # Example of how you might start a Flask/FastAPI server if it were part of this script (CURRENTLY HANDLED BY start.sh)
     # if args.mode == 'serve':
     #   from api_server import app as flask_app # Assuming api_server.py defines a Flask app
     #   import uvicorn # or from hypercorn.asyncio import serve
