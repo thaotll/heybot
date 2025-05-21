@@ -58,7 +58,7 @@ jobs:
           DC_VERSION="9.2.0" # Specify a recent version
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
           unzip dependency-check-${DC_VERSION}-release.zip
-          echo "DEPDENDENCY_CHECK_BIN_DIR=${{ github.workspace }}/dependency-check/bin" >> $GITHUB_ENV
+          echo "DEPENDENCY_CHECK_BIN_DIR=${{ github.workspace }}/dependency-check/bin" >> $GITHUB_ENV
           echo "${{ github.workspace }}/dependency-check/bin" >> $GITHUB_PATH
 
       - name: Create directory for CI scan results
