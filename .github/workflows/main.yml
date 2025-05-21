@@ -58,6 +58,7 @@ jobs:
           DC_VERSION="9.2.0" # Specify a recent version
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
           unzip dependency-check-${DC_VERSION}-release.zip
+          echo "DEPDENDENCY_CHECK_BIN_DIR=${{ github.workspace }}/dependency-check/bin" >> $GITHUB_ENV
           echo "${{ github.workspace }}/dependency-check/bin" >> $GITHUB_PATH
 
       - name: Create directory for CI scan results
@@ -82,6 +83,7 @@ jobs:
           (cd temp_app_for_ci && \
             PATH="${{ github.workspace }}/dependency-check/bin:$PATH" \
             CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
+            DEPENDENCY_CHECK_BIN_DIR=${{ env.DEPENDENCY_CHECK_BIN_DIR }} \
             DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
             MODEL_HUMOR_PATH=model_humor.txt \
             DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
