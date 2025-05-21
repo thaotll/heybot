@@ -20,9 +20,11 @@ function CodeAnalysisDetailsComponent({ analysis }: CodeAnalysisDetailsProps) {
           )}
           <div className="flex-1">
             <h3 className="font-medium text-[#c9d1d9]">
-              {analysis.status === "success" ? "Code-Analyse bestanden" : "Probleme erkannt"}
+              KI-Zusammenfassung (DeepSeek)
             </h3>
-            <p className="text-[#8b949e] whitespace-pre-wrap mt-1">{analysis.feedback}</p>
+            <p className="text-[#8b949e] whitespace-pre-wrap mt-1">
+              {analysis.humorMessage || "Keine Zusammenfassung verfügbar."}
+            </p>
           </div>
 
           {/* Meme display for humor component */}

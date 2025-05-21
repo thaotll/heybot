@@ -26,7 +26,7 @@ export default function Home() {
           </p>
         </header>
         <CodeAnalysisDashboard />
-          <DeepSeekMessage />
+          {/* <DeepSeekMessage /> */}
       </div>
     </main>
   )

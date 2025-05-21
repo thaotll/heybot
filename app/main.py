@@ -15,6 +15,8 @@ from openai import AsyncOpenAI
 import pytz
 import httpx
 
+# Load .env file for local development
+load_dotenv(Path(__file__).parent / ".env")
 
 # Configure logging
 logging.basicConfig(

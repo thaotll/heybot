@@ -31,9 +31,47 @@ export default async function handler(req, res) {
 
     const singleAnalysisObject = JSON.parse(responseText); // Now parse the text as JSON
 
+    // Transform singleAnalysisObject to match the CodeAnalysis interface
+    let transformedAnalysis = null;
+    if (singleAnalysisObject) {
+      transformedAnalysis = {
+        id: singleAnalysisObject.id || singleAnalysisObject.commitId,
+        commitId: singleAnalysisObject.commitId,
+        repository: singleAnalysisObject.repository,
+        branch: singleAnalysisObject.branch,
+        timestamp: singleAnalysisObject.timestamp,
+        status: singleAnalysisObject.status, // Assuming status is "success", "error", or "pending"
+        
+        feedback: `Analysis for ${singleAnalysisObject.commitId ? singleAnalysisObject.commitId.substring(0,7) : 'N/A'}`, // Placeholder
+        author: "N/A", // Not available in new summary
+
+        humorMessage: singleAnalysisObject.deepseek_summary, // Map deepseek_summary
+
+        // Fields not in new summary - provide default/empty values
+        issues: [], 
+        files: [],
+        kubernetesStatus: {
+          pods: { total: 0, running: 0, pending: 0, failed: 0 },
+          deployments: { total: 0, available: 0, unavailable: 0 },
+          services: 0
+        },
+        memeUrl: null, 
+
+        securityScans: singleAnalysisObject.securityScansSummary ? 
+          singleAnalysisObject.securityScansSummary.map(scan => ({
+            tool: scan.tool.toLowerCase(), // "trivy" or "owasp"
+            // Infer status based on vulnerability counts
+            status: (scan.vulnerabilities && (scan.vulnerabilities.critical > 0 || scan.vulnerabilities.high > 0)) ? "error" : 
+                    ((scan.vulnerabilities && scan.vulnerabilities.medium > 0) ? "warning" : "success"),
+            vulnerabilities: scan.vulnerabilities || { critical: 0, high: 0, medium: 0, low: 0 },
+            details: `Scan results for ${scan.tool}. Overall summary provided by DeepSeek.` // Placeholder
+          })) : []
+      };
+    }
+
     // Wrap the single object in the structure expected by lib/actions.ts
     const responseToFrontend = {
-      data: singleAnalysisObject ? [singleAnalysisObject] : [], // Array containing the single object, or empty if null
+      data: transformedAnalysis ? [transformedAnalysis] : [], // Array containing the single object, or empty if null
       source: "api",
       // You could add dummy values for other ApiResponse fields if strictly needed,
       // but lib/actions.ts primarily cares about `data`.
