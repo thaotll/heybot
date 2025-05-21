@@ -26,10 +26,6 @@ jobs:
         id: get_commit_id
         run: echo "CURRENT_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
-      - name: Debug current commit ID
-        run: |
-          echo "Fetched CURRENT_COMMIT_ID is: ${{ env.CURRENT_COMMIT_ID }}"
-
       - name: Set up Python
         uses: actions/setup-python@v3
         with:
@@ -58,7 +54,6 @@ jobs:
           DC_VERSION="9.2.0" # Specify a recent version
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
           unzip dependency-check-${DC_VERSION}-release.zip
-          echo "DEPENDENCY_CHECK_BIN_DIR=${{ github.workspace }}/dependency-check/bin" >> $GITHUB_ENV
           echo "${{ github.workspace }}/dependency-check/bin" >> $GITHUB_PATH
 
       - name: Create directory for CI scan results
@@ -68,7 +63,6 @@ jobs:
         id: security_scan_ci
         run: |
           echo "Running security scans locally for CI feedback and image baking..."
-          echo "Debug: CURRENT_COMMIT_ID at start of scan step is: ${{ env.CURRENT_COMMIT_ID }}"
           
           # Create a temporary app directory structure for main.py to run correctly
           mkdir -p temp_app_for_ci
@@ -79,15 +73,13 @@ jobs:
           echo "Running python temp_app_for_ci/main.py..."
           # Execute main.py from within temp_app_for_ci so its relative paths work
           # Pass necessary secrets and config.
-          echo "Debug: Passing CURRENT_COMMIT_ID to python script: ${{ env.CURRENT_COMMIT_ID }}"
           (cd temp_app_for_ci && \
             PATH="${{ github.workspace }}/dependency-check/bin:$PATH" \
             CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
-            DEPENDENCY_CHECK_BIN_DIR=${{ env.DEPENDENCY_CHECK_BIN_DIR }} \
             DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
             MODEL_HUMOR_PATH=model_humor.txt \
             DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
-            python main.py)
+            python main.py --mode scan --commit-id ${{ env.CURRENT_COMMIT_ID }})
           
           echo "Moving scan results from temp_app_for_ci/analysis to ${{ env.CI_SCAN_OUTPUT_DIR }}"
           # Move the results to CI_SCAN_OUTPUT_DIR

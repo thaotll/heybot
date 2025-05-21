@@ -185,22 +185,8 @@ def run_owasp_scan(temp_dir, commit_id):
             logging.info(f"Scanning directory (source code): {temp_dir}")
             logging.info(f"Temporary directory for OWASP JSON report: {owasp_output_temp_dir}")
             
-            dependency_check_executable = "dependency-check"
-            dep_check_bin_dir = os.getenv("DEPENDENCY_CHECK_BIN_DIR")
-            if dep_check_bin_dir:
-                logging.info(f"DEPENDENCY_CHECK_BIN_DIR is set to: {dep_check_bin_dir}")
-                # On Linux, the script is typically dependency-check.sh
-                executable_path = Path(dep_check_bin_dir) / "dependency-check.sh"
-                if executable_path.exists() and executable_path.is_file():
-                    dependency_check_executable = str(executable_path)
-                    logging.info(f"Using absolute path for dependency-check: {dependency_check_executable}")
-                else:
-                    logging.warning(f"dependency-check.sh not found at {executable_path}, falling back to PATH and generic 'dependency-check' name.")
-            else:
-                logging.info("DEPENDENCY_CHECK_BIN_DIR not set, relying on dependency-check being in PATH.")
-
             owasp_cmd = [
-                dependency_check_executable,
+                "dependency-check",
                 "--project", f"heybot-{commit_id}", # Eindeutiger Projektname pro Scan
                 "--scan", str(temp_dir),
                 "--format", "JSON",
