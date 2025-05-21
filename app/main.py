@@ -98,7 +98,7 @@ def run_trivy_scan(temp_dir, commit_id):
             "--format", "json",
             "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
             "--no-progress",
-            "--scanners", "vuln,secret,config",
+            "--scanners", "vuln,secret,misconfig",
             "--output", tmp_output_file_name, # Ausgabe in temporäre Datei
             str(temp_dir)
         ]

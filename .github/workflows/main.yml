@@ -63,11 +63,6 @@ jobs:
         id: security_scan_ci
         run: |
           echo "Running security scans locally for CI feedback and image baking..."
-          # Ensure main.py writes its output to the CI_SCAN_OUTPUT_DIR
-          # This might require main.py to accept an output path argument or use an env var.
-          # For now, assuming main.py uses a relative path like 'analysis/' for output.
-          # We will run it from a directory such that its output lands in CI_SCAN_OUTPUT_DIR
-          # IMPORTANT: Adjust main.py or this step if main.py cannot easily redirect output.
           
           # Create a temporary app directory structure for main.py to run correctly
           mkdir -p temp_app_for_ci
@@ -77,8 +72,9 @@ jobs:
 
           echo "Running python temp_app_for_ci/main.py..."
           # Execute main.py from within temp_app_for_ci so its relative paths work
-          # Pass necessary secrets and config. DISCORD_WEBHOOK_URL might be optional here if only for feedback.
+          # Pass necessary secrets and config.
           (cd temp_app_for_ci && \
+            PATH="${{ github.workspace }}/dependency-check/bin:$PATH" \
             CURRENT_COMMIT_ID=${{ env.CURRENT_COMMIT_ID }} \
             DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }} \
             MODEL_HUMOR_PATH=model_humor.txt \
@@ -86,31 +82,30 @@ jobs:
             python main.py)
           
           echo "Moving scan results from temp_app_for_ci/analysis to ${{ env.CI_SCAN_OUTPUT_DIR }}"
-          # Move the results (e.g., latest.json, trivy json, owasp html) to CI_SCAN_OUTPUT_DIR
-          # This assumes main.py placed its output into temp_app_for_ci/analysis/
+          # Move the results to CI_SCAN_OUTPUT_DIR
           mv temp_app_for_ci/analysis/* ${{ env.CI_SCAN_OUTPUT_DIR }}/
           rm -rf temp_app_for_ci # Clean up temporary directory
 
           echo "Scan script finished. Listing contents of ${{ env.CI_SCAN_OUTPUT_DIR }}:"
           ls -lA ${{ env.CI_SCAN_OUTPUT_DIR }}
 
-          LATEST_JSON_PATH="${{ env.CI_SCAN_OUTPUT_DIR }}/latest.json"
+          LATEST_JSON_PATH="${{ env.CI_SCAN_OUTPUT_DIR }}/latest_summary.json" # MODIFIED
           if [ ! -f "$LATEST_JSON_PATH" ]; then
-            echo "::error::Scan result file latest.json not found in ${{ env.CI_SCAN_OUTPUT_DIR }}!"
+            echo "::error::Scan result file latest_summary.json not found in ${{ env.CI_SCAN_OUTPUT_DIR }}!" # MODIFIED
             echo "Expected at: $LATEST_JSON_PATH"
-            # ls -lA ${{ env.CI_SCAN_OUTPUT_DIR }} # Double check content on error
             exit 1
           fi
           
-          echo "Contents of latest.json:"
+          echo "Contents of latest_summary.json:" # MODIFIED
           cat "$LATEST_JSON_PATH"
 
-          if jq -e '.securityScans[] | select(.status=="error")' "$LATEST_JSON_PATH"; then
-            echo "::warning::Security scan found critical errors according to latest.json."
-          elif jq -e '.securityScans[] | select(.status=="warning")' "$LATEST_JSON_PATH"; then
-            echo "::warning::Security scan found warnings according to latest.json."
+          # MODIFIED JQ CHECKS to use the top-level 'status' field from latest_summary.json
+          if jq -e '.status == "error"' "$LATEST_JSON_PATH"; then
+            echo "::warning::Security scan resulted in an overall 'error' status according to latest_summary.json."
+          elif jq -e '.status == "warning"' "$LATEST_JSON_PATH"; then
+            echo "::warning::Security scan resulted in an overall 'warning' status according to latest_summary.json."
           else
-            echo "Security scan completed without critical errors or warnings reported in latest.json."
+            echo "Security scan completed with an overall 'success' status reported in latest_summary.json."
           fi
 
       - name: Upload CI scan results (for debugging/archive)
