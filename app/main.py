@@ -182,51 +182,51 @@ def run_owasp_scan(temp_dir, commit_id):
         data_dir.mkdir(exist_ok=True)
         
         try:
-            logging.info(f"Starting OWASP scan for commit {commit_id}")
-            logging.info(f"OWASP database directory: {data_dir}")
+        logging.info(f"Starting OWASP scan for commit {commit_id}")
+        logging.info(f"OWASP database directory: {data_dir}")
             logging.info(f"Scanning directory (source code): {temp_dir}")
             logging.info(f"Temporary directory for OWASP JSON report: {owasp_output_temp_dir}")
         
-            owasp_cmd = [
-                "dependency-check",
+        owasp_cmd = [
+            "dependency-check",
                 "--project", f"heybot-{commit_id}", # Eindeutiger Projektname pro Scan
-                "--scan", str(temp_dir),
-                "--format", "JSON",
+            "--scan", str(temp_dir),
+            "--format", "JSON",
                 "--out", str(owasp_output_temp_dir), # Ausgabe in das temporäre Ausgabeverzeichnis
                 "--failOnCVSS", "11",
                 "--nodeAuditSkipDevDependencies", "false",
                 "--data", str(data_dir),
                 "--log", "info"
-            ]
+        ]
         
-            logging.info(f"Running OWASP command: {' '.join(owasp_cmd)}")
+        logging.info(f"Running OWASP command: {' '.join(owasp_cmd)}")
         
-            process = subprocess.Popen(
-                owasp_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                env={**os.environ}
-            )
+        process = subprocess.Popen(
+            owasp_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env={**os.environ}
+        )
         
-            for line in process.stdout:
-                line = line.strip()
-                if "ERROR" in line or "FATAL" in line:
-                    logging.error(f"OWASP: {line}")
-                elif "WARN" in line:
-                    logging.warning(f"OWASP: {line}")
-                elif "INFO" in line and ("Progress" in line or "Download" in line or "Processing" in line or "Checking" in line):
-                    logging.info(f"OWASP Progress: {line}")
-            
-            return_code = process.wait()
+        for line in process.stdout:
+            line = line.strip()
+            if "ERROR" in line or "FATAL" in line:
+                logging.error(f"OWASP: {line}")
+            elif "WARN" in line:
+                logging.warning(f"OWASP: {line}")
+            elif "INFO" in line and ("Progress" in line or "Download" in line or "Processing" in line or "Checking" in line):
+                logging.info(f"OWASP Progress: {line}")
+        
+        return_code = process.wait()
 
-            if return_code == 0:
-                logging.info(f"OWASP scan completed for commit {commit_id}")
+        if return_code == 0:
+            logging.info(f"OWASP scan completed for commit {commit_id}")
                 # Finde die generierte JSON-Datei im temporären Ausgabeverzeichnis
                 # Übliche Namen: dependency-check-report.json
-                report_file_path = owasp_output_temp_dir / "dependency-check-report.json"
+            report_file_path = owasp_output_temp_dir / "dependency-check-report.json"
 
-                if not report_file_path.exists():
+            if not report_file_path.exists():
                     # Fallback: Manchmal wird sie auch einfach als dependency-check.json benannt
                     report_file_path_alt = owasp_output_temp_dir / "dependency-check.json"
                     if report_file_path_alt.exists():
@@ -251,17 +251,17 @@ def run_owasp_scan(temp_dir, commit_id):
                     else:
                         logging.warning(f"OWASP report file {report_file_path} is empty.")
                 # Die temporäre Datei und das Verzeichnis werden durch den with-Kontext von TemporaryDirectory automatisch bereinigt.
-            else:
+                else:
                 logging.error(f"OWASP scan failed with return code {return_code}")
                 # owasp_data bleibt {"dependencies": []}
             
-        except subprocess.CalledProcessError as e:
-            logging.error(f"OWASP scan failed: {str(e)}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"OWASP scan failed: {str(e)}")
             if hasattr(e, 'stdout') and e.stdout: logging.error(f"Stdout: {e.stdout}")
             if hasattr(e, 'stderr') and e.stderr: logging.error(f"Stderr: {e.stderr}")
             # owasp_data bleibt {"dependencies": []}
-        except Exception as e:
-            logging.error(f"Unexpected error during OWASP scan: {str(e)}")
+    except Exception as e:
+        logging.error(f"Unexpected error during OWASP scan: {str(e)}")
             # owasp_data bleibt {"dependencies": []}
         # Das temporäre Verzeichnis owasp_output_temp_dir wird hier automatisch gelöscht.
     
@@ -752,7 +752,7 @@ async def analyze_specific_commit(commit_id, run_mode_arg='scan'):
 
     if trivy_has_results or owasp_has_results:
         logging.info(f"Scans for {commit_id} produced data. Building prompt for DeepSeek.")
-        prompt = build_prompt_with_logs(trivy_data, owasp_data)
+    prompt = build_prompt_with_logs(trivy_data, owasp_data)
         security_report_content = await send_prompt_to_deepseek(prompt)
     else:
         security_report_content = "Scans ran but returned no specific vulnerabilities or misconfigurations."
@@ -779,7 +779,7 @@ async def analyze_specific_commit(commit_id, run_mode_arg='scan'):
     
     # Konstruiere das alte CodeAnalysis-Objekt (ohne Dateischreiben) für Rückwärtskompatibilität
     legacy_code_analysis_object = save_analysis_json(trivy_data, owasp_data, commit_id)
-    
+
     return persisted_summary, legacy_code_analysis_object
 
 

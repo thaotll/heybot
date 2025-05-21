@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, Info, FileCode, CheckCircle } from "lucide-react"
+import { AlertCircle, AlertTriangle, Info, FileCode, CheckCircle, Clock } from "lucide-react"
 import type { CodeAnalysis } from "./code-analysis-dashboard"
 
 interface CodeAnalysisDetailsProps {
@@ -19,12 +19,42 @@ function CodeAnalysisDetailsComponent({ analysis }: CodeAnalysisDetailsProps) {
             <AlertCircle className="h-5 w-5 text-[#f85149] mt-0.5" />
           )}
           <div className="flex-1">
-            <h3 className="font-medium text-[#c9d1d9]">
-              KI-Zusammenfassung (DeepSeek)
-            </h3>
-            <p className="text-[#8b949e] whitespace-pre-wrap mt-1">
-              {analysis.humorMessage || "Keine Zusammenfassung verfügbar."}
-            </p>
+            {/* The above section displaying humorMessage is now commented out */}
+            {/* We can add other details here later if needed, like commit author and timestamp if not elsewhere */}
+            {/* Removed old commit, author, date paragraphs */}
+
+            {analysis.status === 'error' && (
+              <div className="flex items-start gap-3">
+                <div>
+                  <h3 className="font-semibold text-lg text-[#c9d1d9]">Probleme erkannt</h3>
+                  <p className="text-sm text-[#8b949e] mt-1">
+                    Mehrere Sicherheitsprobleme und Code-Qualitätsprobleme gefunden. Bitte überprüfen Sie die Details unten.
+                  </p>
+                </div>
+              </div>
+            )}
+            {analysis.status === 'success' && (
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-6 w-6 text-[#3fb950] mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-lg text-[#c9d1d9]">Code-Analyse bestanden</h3>
+                  <p className="text-sm text-[#8b949e] mt-1">
+                    Code-Analyse erfolgreich abgeschlossen. Keine kritischen Probleme gefunden.
+                  </p>
+                </div>
+              </div>
+            )}
+            {analysis.status === 'pending' && (
+              <div className="flex items-start gap-3">
+                <Clock className="h-6 w-6 text-[#8b949e] mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-lg text-[#c9d1d9]">Analyse ausstehend</h3>
+                  <p className="text-sm text-[#8b949e] mt-1">
+                    Die Code-Analyse für diesen Commit wird derzeit durchgeführt oder die Daten sind noch nicht verfügbar.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Meme display for humor component */}

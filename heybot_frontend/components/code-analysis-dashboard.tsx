@@ -298,12 +298,20 @@ function CodeAnalysisDashboard() {
               <span className="text-xs font-normal text-[#8b949e] font-mono">
                 Commit {selectedAnalysisData.commitId.substring(0, 7)}
               </span>
-              {/* Humor Message */}
+              {/* Truncate humorMessage in the header of Analyse-Details card and make it clickable */}
               {selectedAnalysisData.humorMessage && (
-                <span className="ml-auto text-xs font-normal text-[#58a6ff] flex items-center">
-                  <Bot className="h-3.5 w-3.5 mr-1" />
-                  {selectedAnalysisData.humorMessage}
-                </span>
+                <div 
+                  className="ml-auto text-xs font-normal text-[#58a6ff] flex items-center overflow-hidden cursor-pointer hover:underline" 
+                  style={{ maxWidth: '250px' }}
+                  onClick={() => {
+                    document.getElementById('full-humor-message-card')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  <Bot className="h-3.5 w-3.5 mr-1 flex-shrink-0" />
+                  <span className="truncate"> 
+                    {selectedAnalysisData.humorMessage}
+                  </span>
+                </div>
               )}
             </CardTitle>
           </CardHeader>
@@ -356,6 +364,20 @@ function CodeAnalysisDashboard() {
                 <SystemMetrics analysis={selectedAnalysisData} />
               </TabsContent>
             </Tabs>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* New Dedicated Section for Full DeepSeek Message of Selected Commit */}
+      {selectedAnalysisData && selectedAnalysisData.humorMessage && (
+        <Card id="full-humor-message-card" className="mt-6 border border-[#30363d] bg-[#0d1117] shadow-sm rounded-md overflow-hidden">
+          <CardHeader className="bg-[#161b22] border-b border-[#30363d] px-4 py-3">
+            <CardTitle className="text-[#c9d1d9] text-base font-semibold flex items-center">
+              <Bot className="h-5 w-5 mr-2 text-[#58a6ff]" /> KI-Generierte Analyse (DeepSeek)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <p className="text-[#c9d1d9] whitespace-pre-wrap">{selectedAnalysisData.humorMessage}</p>
           </CardContent>
         </Card>
       )}
