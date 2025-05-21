@@ -211,7 +211,15 @@ function CodeAnalysisDashboard() {
                               <GitBranch className="h-4 w-4 text-[#8b949e]"/>
                           </div>
                           <div>
-                              <h3 className="text-sm font-semibold text-[#c9d1d9]">{analysis.feedback}</h3>
+                              <a 
+                                href={`https://github.com/${analysis.repository}/commit/${analysis.commitId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm font-semibold text-[#c9d1d9] hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {analysis.feedback}
+                              </a>
                               <p className="text-xs text-[#8b949e] mt-1">
                                   {analysis.repository}/{analysis.branch} •{" "}
                                   <span className="font-mono">{analysis.commitId.substring(0, 7)}</span>
