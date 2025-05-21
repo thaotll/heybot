@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   // Add a cache-busting timestamp to the backend request
-  const backendUrl = `http://localhost:8080/security-analysis/latest?proxybust=${new Date().getTime()}`;
+  const backendUrl = `http://localhost:8081/security-analysis/latest?proxybust=${new Date().getTime()}`;
   console.log(`[commitsProxy] Fetching: ${backendUrl}`);
 
   try {
