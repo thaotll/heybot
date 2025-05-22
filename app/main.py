@@ -628,25 +628,71 @@ Die folgenden {len(vulnerabilities)} wichtigsten Sicherheitsprobleme wurden iden
 
 {json.dumps(vulnerabilities, indent=2)}
 
-## ANWEISUNGEN FÜR DIE KI
+ANWEISUNGEN FÜR DIE KI (Jedi Edition)
+Erstelle einen humorvollen und informativen Sicherheitsbericht, der sich liest wie ein Protokoll des galaktischen Sicherheitsrats. Verwende Star Wars Humor, reich an Anspielungen, Sarkasmus und Tech-Nerd-Tiefe. Der Stil darf episodenhaft, dramatisch oder wie ein imperiales Logbuch sein – aber bitte nerdig bleiben, junger Padawan.
 
-Erstelle einen humorvollen und informativen Sicherheitsbericht mit den folgenden Abschnitten:
+1. EINLEITUNG (WITZ, DU SOLLST MACHEN)
+Beginne mit einem ein- oder mehrzeiligen Intro, das die Sicherheitslage mit Star Wars-Flair beschreibt:
 
-1. WITZ: Ein humorvoller Einleitungssatz oder Absatz, der die Sicherheitslage zusammenfasst.
+Obi-Wan-Warnungen („Das ist keine Sicherheitslücke, das ist eine Falle!“)
 
-2. SICHERHEITSÜBERSICHT: Eine Markdown-Tabelle mit den wichtigsten gefundenen Sicherheitsproblemen. Die Tabelle sollte folgende Spalten haben:
-   - Package/Komponente
-   - Schweregrad
-   - Problem (CVE/ID)
-   - Verfügbare Lösung
-   - Empfohlene Aktion
+Sith-ähnliche Vulnerabilities („Diese CVE wurde aus purer Bosheit geschrieben.“)
 
-3. TECHNISCHE HINWEISE: Kurze technische Details zu den 2-3 kritischsten Problemen (falls vorhanden).
+Droiden-Metaphern („Die Codebasis sieht aus, als wäre sie von einem betrunkenen R2-D2 formatiert worden.“)
 
-4. EMPFOHLENE SCHRITTE: 2-3 konkrete Schritte zur Behebung der wichtigsten Probleme.
+Beispiel:
+„Die Sicherheitslage? Stell dir vor, Jar Jar Binks ist der DevOps Engineer – und er hat chmod 777 -R / auf der Death Star-Konsole ausgeführt.“
 
-Wenn keine Probleme gefunden wurden, erstelle einen humorvollen Glückwunschtext.
-Beende den Bericht immer mit einem kurzen, humorvollen Absatz.
+2. SICHERHEITSÜBERSICHT (GALAKTISCHES KONTROLLPANEL)
+Markdown-Tabelle mit:
+
+Komponente/Modul (z.B. react-hyperdrive, lightsaber.js)
+
+Schweregrad (Symbole: 🟢 Padawan, 🟡 Jedi-Trial, 🔴 Sith Alert, ☠️ Todesstern-Stufe)
+
+CVE/ID
+
+Fix oder Patch (z.B. „Recompile shields“)
+
+Empfohlene Aktion („Use the Force – and update.“)
+
+Beispiel:
+force-engine | Sith Alert | CVE-1138 | Patch 1.2.3 | "Meditate deeply and npm update"
+
+3. TECHNISCHE HINWEISE (HOLOCRON DER GEFÜHRCHTETSTEN)
+Kurze Erklärungen zu den gefährlichsten Problemen:
+
+Stil wie ein Jedi-Meister, der einen dunklen Codepfad enthüllt
+
+Oder wie ein Protokolldroide mit Burnout
+
+Beispiel:
+"Diese Dependency wurde zuletzt vor dem Klonkriege aktualisiert. Ihr CVSS-Score ist so hoch wie die Midi-Chlorianer-Werte von Anakin."
+
+4. EMPFOHLENE MASSNAHMEN (TASKS DER REBELLENALLIANZ)
+2–3 klare, nerdig formulierte Schritte. Z.B.:
+
+npm audit fix --use-the-force
+
+"Patch now or forever serve the Empire."
+
+"Refactor this legacy class, before it refactors dich in der Produktion."
+
+5. KEINE SCHWACHSTELLEN? THEN CELEBRATE LIKE EWOKS.
+Feiere mit ironisch-jubelnden Glückwünschen:
+
+“0 CVEs – entweder bist du ein Jedi oder du hast das Scannen deaktiviert.”
+
+“Der Code ist so sauber, Yoda würde ihn reviewen – rückwärts und ohne Linter.”
+
+6. ABSCHLUSS (LEGENDENWÜRDIG)
+Beende mit einem nerdigen One-Liner im Star-Wars-Stil:
+
+“May your deployments be swift, and your logs forever verbose.”
+
+“That's no moon. That's your unresolved dependency graph.”
+
+“Commit often. Push wisely. Merge responsibly.”
 """
         return prompt
     except Exception as e:
